@@ -12,6 +12,8 @@ interface UIState {
     hideToast: () => void;
     isGlobalLoading: boolean;
     setGlobalLoading: (isLoading: boolean) => void;
+    themePreference: 'system' | 'light' | 'dark';
+    setThemePreference: (theme: 'system' | 'light' | 'dark') => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -25,4 +27,6 @@ export const useUIStore = create<UIState>((set) => ({
     hideToast: () => set((state) => ({ toast: { ...state.toast, visible: false } })),
     isGlobalLoading: false,
     setGlobalLoading: (isLoading: boolean) => set({ isGlobalLoading: isLoading }),
+    themePreference: 'dark', // Defaulting to dark as requested since it's the current theme
+    setThemePreference: (theme) => set({ themePreference: theme })
 }));

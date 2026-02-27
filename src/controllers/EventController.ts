@@ -1,6 +1,7 @@
 import { ConflictEngine } from '../core/event/ConflictEngine';
 import { Event } from '../core/event/Event';
 import { EventManager } from '../core/event/EventManager';
+import { AuthManager } from '../core/identity/AuthManager';
 import { RecommendationEngine } from '../intelligence/RecommendationEngine';
 import { GeoPoint } from '../spatial/Location';
 import { ResponseEntity } from './ResponseEntity';
@@ -8,12 +9,17 @@ import { ResponseEntity } from './ResponseEntity';
 export interface CreateEventDTO {
     title: string;
     category: string;
+    time?: Date;
+    duration?: string;
+    location_lat?: number;
+    location_lng?: number;
 }
 
 export interface EventFilterDTO {
     location?: GeoPoint;
     startTime?: Date;
     category?: string;
+    organizerId?: string;
 }
 
 export interface EventDetailDTO {
@@ -40,15 +46,28 @@ export class EventController {
     /**
      * Starts EventBuilder and validates availability via conflictEngine.checkAvailability().
      */
-    public async createEvent(request: CreateEventDTO): Promise<ResponseEntity<Event>> {
-        return { status: 201 };
+    public async createEvent(request: CreateEventDTO): Promise<ResponseEntity<Event | any>> {
+        try {
+            const user = await AuthManager.getInstance().getCurrentUser();
+            if (!user) throw new Error("Authentication required");
+
+            const event = await this.eventManager.createEvent(user.id, request);
+            return { status: 201, data: event, message: "Event Created" };
+        } catch (error: any) {
+            return { status: 500, message: error.message || "Event creation failed" };
+        }
     }
 
     /**
      * Lists events by location, time, or category.
      */
-    public async getEvents(filter: EventFilterDTO): Promise<ResponseEntity<Event[]>> {
-        return { status: 200, data: [] };
+    public async getEvents(filter: EventFilterDTO): Promise<ResponseEntity<any[]>> {
+        try {
+            const events = await this.eventManager.getEvents(filter);
+            return { status: 200, data: events };
+        } catch (error: any) {
+            return { status: 500, message: error.message || "Failed to fetch events" };
+        }
     }
 
     /**
@@ -62,7 +81,15 @@ export class EventController {
      * Adds participant; returns error if capacity is full.
      */
     public async joinEvent(eventId: string): Promise<ResponseEntity> {
-        return { status: 200, message: "Joined Event" };
+        try {
+            const user = await AuthManager.getInstance().getCurrentUser();
+            if (!user) throw new Error("Authentication required");
+
+            await this.eventManager.joinEvent(eventId, user.id);
+            return { status: 200, message: "Joined Event" };
+        } catch (error: any) {
+            return { status: 500, message: error.message || "Failed to join event" };
+        }
     }
 
     /**

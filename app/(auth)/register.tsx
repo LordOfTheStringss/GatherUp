@@ -6,19 +6,21 @@ import { useUIStore } from '../../src/store/uiStore';
 
 export default function RegisterScreen() {
     const [fullName, setFullName] = useState('');
+    const [username, setUsername] = useState('');
+    const [age, setAge] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const { register } = useAuthStore();
     const { showToast } = useUIStore();
 
     const handleRegister = async () => {
-        if (!fullName || !email || !password) {
+        if (!fullName || !username || !age || !email || !password) {
             showToast('Please fill in all fields.', 'error');
             return;
         }
 
         try {
-            const success = await register({ fullName, email, password });
+            const success = await register({ fullName, username, age, email, password });
             if (success) {
                 showToast('Registration successful! Check your email to verify.', 'success');
                 // Navigating to interest selection or login
@@ -48,6 +50,25 @@ export default function RegisterScreen() {
                     value={fullName}
                     onChangeText={setFullName}
                     autoCapitalize="words"
+                />
+
+                <TextInput
+                    style={styles.input}
+                    placeholder="Username"
+                    placeholderTextColor="#7f8c8d"
+                    value={username}
+                    onChangeText={setUsername}
+                    autoCapitalize="none"
+                />
+
+                <TextInput
+                    style={styles.input}
+                    placeholder="Age"
+                    placeholderTextColor="#7f8c8d"
+                    value={age}
+                    onChangeText={setAge}
+                    keyboardType="number-pad"
+                    maxLength={3}
                 />
 
                 <TextInput

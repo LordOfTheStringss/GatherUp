@@ -2,25 +2,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
 import { Platform, View } from 'react-native';
 import { useUIStore } from '../../src/store/uiStore';
+import { useTheme } from '../../src/theme/useTheme';
 
 export default function TabLayout() {
+    const theme = useTheme();
+
     return (
         <Tabs screenOptions={{
             headerShown: false,
             tabBarStyle: {
-                backgroundColor: '#0F172A',
-                borderTopColor: '#1E293B',
+                backgroundColor: theme.card,
+                borderTopColor: theme.cardBorder,
                 height: Platform.OS === 'ios' ? 88 : 68,
                 paddingBottom: Platform.OS === 'ios' ? 28 : 10,
             },
-            tabBarActiveTintColor: '#3B82F6',
-            tabBarInactiveTintColor: '#64748B',
+            tabBarActiveTintColor: theme.primary,
+            tabBarInactiveTintColor: theme.textSecondary,
             tabBarShowLabel: true,
         }}>
             <Tabs.Screen
                 name="index"
                 options={{
-                    title: 'Home',
+                    title: 'Events',
                     tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
                 }}
             />
@@ -50,7 +53,7 @@ export default function TabLayout() {
                             shadowRadius: 10,
                             elevation: 8,
                             borderWidth: 4,
-                            borderColor: '#0F172A'
+                            borderColor: theme.card
                         }}>
                             <Ionicons name="sparkles" size={32} color="#FFF" />
                         </View>

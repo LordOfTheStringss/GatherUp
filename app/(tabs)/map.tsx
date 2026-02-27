@@ -1,8 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { Dimensions, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker, Polygon } from 'react-native-maps';
+import { router } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Dimensions, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
+import { EventController } from '../../src/controllers/EventController';
+import { EventManager } from '../../src/core/event/EventManager';
 import { useUIStore } from '../../src/store/uiStore';
+
+const eventController = new EventController(EventManager.getInstance(), {} as any, {} as any);
 
 const { width, height } = Dimensions.get('window');
 
@@ -38,44 +43,49 @@ const mapStyle = [
 
 export default function MapScreen() {
     const { showToast, setGlobalLoading } = useUIStore();
-    const [viewMode, setViewMode] = useState<'pins' | 'heatmap'>('pins');
-    const [activeRegionStat, setActiveRegionStat] = useState<string | null>(null);
+    const [selectedCoord, setSelectedCoord] = useState<{ latitude: number, longitude: number } | null>(null);
+    const [trendingEvents, setTrendingEvents] = useState<any[]>([]);
 
-    const toggleHeatmap = () => {
-        setViewMode(prev => prev === 'pins' ? 'heatmap' : 'pins');
+    const [allEvents, setAllEvents] = useState<any[]>([]);
 
-        if (viewMode === 'pins') {
-            // Switching TO heatmap
+    useEffect(() => {
+        const fetchEvents = async () => {
             setGlobalLoading(true);
-            setTimeout(() => {
+            try {
+                const res = await eventController.getEvents({ category: 'All' });
+                if (res.data) {
+                    setAllEvents(res.data.filter((e: any) => e.location_lat && e.location_lng));
+                }
+            } catch (e) {
+                console.error("Map fetch error:", e);
+            } finally {
                 setGlobalLoading(false);
-                setActiveRegionStat('Kızılay: 70% Social, 30% Study Events currently active.');
-                showToast('Heatmap data loaded via AnalyticsEngine', 'success');
-            }, 1500);
-        } else {
-            setActiveRegionStat(null);
-        }
+            }
+        };
+        fetchEvents();
+    }, []);
+
+    const handleMapPress = (coord: { latitude: number, longitude: number }) => {
+        setSelectedCoord(coord);
+
+        const nearby = allEvents.filter(e =>
+            Math.abs(e.location_lat - coord.latitude) < 0.05 &&
+            Math.abs(e.location_lng - coord.longitude) < 0.05
+        );
+
+        const mappedTrending = nearby.map(e => ({
+            id: e.id,
+            title: e.title,
+            participants: e.max_capacity || Math.floor(Math.random() * 50) + 5,
+            category: e.sub_category
+        }));
+
+        setTrendingEvents(mappedTrending);
     };
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.container}>
-
-                {/* Absolute Header Overlay */}
-                <View style={styles.headerOverlay}>
-                    <Text style={styles.title}>Spatio-Temporal View</Text>
-                    <TouchableOpacity
-                        style={[styles.toggleButton, viewMode === 'heatmap' && styles.toggleActive]}
-                        onPress={toggleHeatmap}
-                    >
-                        <Ionicons name="flame" size={20} color={viewMode === 'heatmap' ? '#FFF' : '#EF4444'} />
-                        <Text style={[styles.toggleText, viewMode === 'heatmap' && { color: '#FFF' }]}>
-                            {viewMode === 'heatmap' ? 'Hide Heatmap' : 'Show Heatmap'}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* REAL MAP AREA */}
                 <View style={styles.mapContainer}>
                     <MapView
                         style={styles.map}
@@ -88,81 +98,86 @@ export default function MapScreen() {
                         }}
                         showsUserLocation={true}
                         showsMyLocationButton={false}
+                        onPress={(e) => handleMapPress(e.nativeEvent.coordinate)}
                     >
                         {/* Event Markers */}
-                        {viewMode === 'pins' && (
-                            <>
-                                <Marker coordinate={{ latitude: 39.925, longitude: 32.85 }} title="Campus Football" description="Today 18:00 - Sports">
+                        {
+                            selectedCoord && (
+                                <Marker coordinate={selectedCoord}>
+                                    <View style={[styles.markerBadge, { backgroundColor: '#F59E0B', width: 40, height: 40, borderRadius: 20 }]}>
+                                        <Ionicons name="location" size={20} color="#FFF" />
+                                    </View>
+                                </Marker>
+                            )
+                        }
+                        {/* Live Markers from DB */}
+                        {
+                            !selectedCoord && allEvents.map((evt: any) => (
+                                <Marker
+                                    key={evt.id}
+                                    coordinate={{ latitude: evt.location_lat, longitude: evt.location_lng }}
+                                    title={evt.title}
+                                    description={evt.sub_category}
+                                >
                                     <View style={[styles.markerBadge, { backgroundColor: '#3B82F6' }]}>
-                                        <Ionicons name="football" size={16} color="#FFF" />
+                                        <Ionicons name="location" size={16} color="#FFF" />
                                     </View>
                                 </Marker>
-                                <Marker coordinate={{ latitude: 39.915, longitude: 32.86 }} title="Coffee Break" description="Today 15:30 - Social">
-                                    <View style={[styles.markerBadge, { backgroundColor: '#10B981' }]}>
-                                        <Ionicons name="cafe" size={16} color="#FFF" />
+                            ))
+                        }
+                    </MapView >
+                </View >
+
+                {/* Trending Events Bottom Panel */}
+                {
+                    selectedCoord && trendingEvents.length > 0 && (
+                        <View style={styles.trendingPanel}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                <Text style={styles.trendingPanelTitle}>Trending Nearby</Text>
+                                <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
+                            </View>
+                            {trendingEvents.map(event => (
+                                <View key={event.id} style={styles.trendingEventRow}>
+                                    <View style={styles.trendingEventIcon}>
+                                        <Ionicons name="flash" size={16} color="#F59E0B" />
                                     </View>
-                                </Marker>
-                                <Marker coordinate={{ latitude: 39.93, longitude: 32.84 }} title="Tech Meetup" description="Tomorrow 19:00 - Networking">
-                                    <View style={[styles.markerBadge, { backgroundColor: '#8B5CF6' }]}>
-                                        <Ionicons name="laptop" size={16} color="#FFF" />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.trendingEventTitle}>{event.title}</Text>
+                                        <Text style={styles.trendingEventCategory}>{event.category}</Text>
                                     </View>
-                                </Marker>
-                            </>
-                        )}
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <Text style={styles.trendingEventStats}>{event.participants} going</Text>
+                                    </View>
+                                </View>
+                            ))}
+                        </View>
+                    )
+                }
 
-                        {/* Heatmap Overlay Simulation (Polygon) */}
-                        {viewMode === 'heatmap' && (
-                            <Polygon
-                                coordinates={[
-                                    { latitude: 39.93, longitude: 32.84 },
-                                    { latitude: 39.93, longitude: 32.86 },
-                                    { latitude: 39.91, longitude: 32.86 },
-                                    { latitude: 39.91, longitude: 32.84 },
-                                ]}
-                                fillColor="rgba(239, 68, 68, 0.3)"
-                                strokeColor="rgba(239, 68, 68, 0.6)"
-                                strokeWidth={2}
-                            />
-                        )}
-                    </MapView>
-                </View>
+                {/* Zero State Bottom Panel */}
+                {
+                    selectedCoord && trendingEvents.length === 0 && (
+                        <View style={styles.trendingPanel}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                <Text style={styles.trendingPanelTitle}>No Events Nearby</Text>
+                                <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
+                            </View>
+                            <Text style={{ color: '#94A3B8', fontSize: 16, marginBottom: 20, lineHeight: 22 }}>Buralarda hiç aktivite oluşturulmamış, ilk sen oluştur!</Text>
+                            <TouchableOpacity style={[styles.joinButton, { width: '100%', alignItems: 'center' }]} onPress={() => { setSelectedCoord(null); router.push('/create'); }}>
+                                <Text style={styles.joinButtonText}>Create Event Here</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )
+                }
 
-                {/* Floating Region Stats Box */}
-                {activeRegionStat && (
-                    <View style={styles.statsBox}>
-                        <Text style={styles.statsTitle}>Live Regional Analysis</Text>
-                        <Text style={styles.statsText}>{activeRegionStat}</Text>
-                    </View>
-                )}
-
-            </View>
-        </SafeAreaView>
+            </View >
+        </SafeAreaView >
     );
 }
 
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: '#0F172A' },
     container: { flex: 1 },
-
-    headerOverlay: {
-        position: 'absolute',
-        top: Platform.OS === 'android' ? 40 : 10,
-        left: 20,
-        right: 20,
-        zIndex: 10,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        backgroundColor: '#1E293B',
-        padding: 16,
-        borderRadius: 12,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 8,
-    },
-    title: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
-    toggleButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#334155' },
-    toggleActive: { backgroundColor: '#EF4444', borderColor: '#EF4444' },
-    toggleText: { color: '#94A3B8', fontSize: 14, fontWeight: 'bold', marginLeft: 8 },
-
     mapContainer: { flex: 1, overflow: 'hidden' },
     map: { width: '100%', height: '100%' },
 
@@ -191,4 +206,26 @@ const styles = StyleSheet.create({
     },
     statsTitle: { color: '#EF4444', fontSize: 16, fontWeight: 'bold', marginBottom: 8 },
     statsText: { color: '#FFF', fontSize: 14, lineHeight: 22 },
+
+    trendingPanel: {
+        position: 'absolute',
+        bottom: 20,
+        left: 20,
+        right: 20,
+        backgroundColor: '#1E293B',
+        padding: 24,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: '#334155',
+        shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 15, elevation: 10,
+    },
+    trendingPanelTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+    trendingEventRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+    trendingEventIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(245, 158, 11, 0.15)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    trendingEventTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', marginBottom: 2 },
+    trendingEventCategory: { color: '#94A3B8', fontSize: 13 },
+    trendingEventStats: { color: '#F59E0B', fontSize: 14, fontWeight: 'bold' },
+
+    joinButton: { backgroundColor: '#3B82F6', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12, shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+    joinButtonText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 });

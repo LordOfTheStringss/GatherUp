@@ -5,6 +5,8 @@ import { ResponseEntity } from './ResponseEntity';
 export interface RegisterDTO {
     email: string;
     fullName: string;
+    username: string;
+    age: string;
     password?: string;
     interestTags?: string[];
 }
@@ -35,17 +37,33 @@ export class AuthController {
      * Returns 201 Created on success, 400 Bad Request on domain violation.
      */
     public async register(request: RegisterDTO): Promise<ResponseEntity> {
-        return { status: 201, message: "User Created" };
+        try {
+            await this.authManager.register({
+                email: request.email,
+                password: request.password || '',
+                fullName: request.fullName,
+                username: request.username,
+                age: request.age
+            });
+            return { status: 201, message: "User Created" };
+        } catch (error: any) {
+            return { status: 400, message: error.message || "Registration failed" };
+        }
     }
 
     /**
      * Calls authManager.login() and returns session token.
      */
     public async login(request: LoginDTO): Promise<ResponseEntity<Session>> {
-        return {
-            status: 200,
-            data: { token: "mock-token", expiresAt: new Date() }
-        };
+        try {
+            const session = await this.authManager.login(request.email, request.password || '');
+            return {
+                status: 200,
+                data: { token: session.access_token, expiresAt: new Date(session.expires_at! * 1000) }
+            };
+        } catch (error: any) {
+            return { status: 401, message: error.message || "Login failed" };
+        }
     }
 
     /**
@@ -66,6 +84,11 @@ export class AuthController {
      * Delegates logout operation to authManager.logout().
      */
     public async logout(token: string): Promise<ResponseEntity> {
-        return { status: 200, message: "Logged out" };
+        try {
+            await this.authManager.logout();
+            return { status: 200, message: "Logged out" };
+        } catch (error: any) {
+            return { status: 500, message: "Logout failed" };
+        }
     }
 }

@@ -23,21 +23,68 @@ export class AuthManager {
         return AuthManager.instance;
     }
 
-    public async register(email: string, pass: string): Promise<boolean> {
-        if (!this.validateDomain(email)) {
+    public async register(data: { email: string, password: string, fullName: string, username: string, age: string }): Promise<boolean> {
+        if (!this.validateDomain(data.email)) {
             throw new InvalidDomainException();
         }
-        // 1. Validates Domain. 
-        // 2. Creates Supabase Auth user. 
-        // 3. Emits USER_REGISTERED.
+
+        const { data: authData, error } = await this.supabaseClient.client.auth.signUp({
+            email: data.email,
+            password: data.password,
+            options: {
+                data: {
+                    full_name: data.fullName,
+                    username: data.username,
+                    age: data.age
+                }
+            }
+        });
+
+        if (error) {
+            console.error('Registration failed:', error);
+            throw new Error(error.message);
+        }
+
+        // To manually ensure the public.users table gets the user info initially
+        if (authData?.user) {
+            // We'll upsert just in case the Supabase trigger doesn't exist yet
+            await this.supabaseClient.client.from('users').upsert({
+                id: authData.user.id,
+                email: data.email,
+                name: data.fullName,
+                profile_image: null,
+            }, { onConflict: 'id' }).catch((e: any) => console.log('Upsert public user warning (maybe handled by trigger):', e));
+        }
+
         return true;
     }
 
     public async login(email: string, pass: string): Promise<any> {
-        // 1. Authenticates. 
-        // 2. Checks isVerified. 
-        // 3. Loads currentUser.
-        return {}; // Returns Session
+        const { data, error } = await this.supabaseClient.client.auth.signInWithPassword({
+            email,
+            password: pass,
+        });
+
+        if (error) {
+            console.error('Login failed:', error);
+            throw new Error(error.message);
+        }
+
+        if (data?.session) {
+            this.sessionToken = data.session.access_token;
+            // Optionally fetch and set currentUser here if needed
+        }
+
+        return data.session;
+    }
+
+    public async getCurrentUser(): Promise<any> {
+        const { data: { user }, error } = await this.supabaseClient.client.auth.getUser();
+        if (error) {
+            console.error('Get user error:', error);
+            return null;
+        }
+        return user;
     }
 
     public validateDomain(email: string): boolean {
@@ -46,7 +93,7 @@ export class AuthManager {
     }
 
     public async logout(): Promise<void> {
-        // Clears local session, currentUser, and closes WebSocket.
+        await this.supabaseClient.client.auth.signOut();
         this.sessionToken = null;
         this.currentUser = null;
     }

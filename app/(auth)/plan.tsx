@@ -7,6 +7,7 @@ import { ScheduleManager } from '../../src/core/schedule/ScheduleManager';
 import { useUIStore } from '../../src/store/uiStore';
 
 // DI Stub
+import * as ImagePicker from 'expo-image-picker';
 const scheduleController = new ScheduleController(
     new ScheduleManager(),
     new OCRProcessor()
@@ -19,14 +20,38 @@ type GridState = { [day: string]: { [hour: string]: boolean } }; // true = busy,
 
 export default function PlanTimeScreen() {
     const { showToast, setGlobalLoading } = useUIStore();
-    const [step, setStep] = useState<'upload' | 'edit'>('upload');
+    const [step, setStep] = useState<'type_select' | 'upload' | 'edit'>('type_select');
     const [grid, setGrid] = useState<GridState>({});
 
+    const startManualEntry = () => {
+        // Initialize empty grid for manual entry (e.g. for Working professionals)
+        const emptyGrid: GridState = {};
+        DAYS.forEach(day => {
+            emptyGrid[day] = {};
+            HOURS.forEach(hour => {
+                emptyGrid[day][hour] = false;
+            });
+        });
+        setGrid(emptyGrid);
+        setStep('edit');
+    };
+
     const handleUpload = async () => {
-        setGlobalLoading(true);
         try {
-            // 1. Upload mock
-            const uploadRes = await scheduleController.uploadScheduleImage({ buffer: '', filename: 'test.jpg' });
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                quality: 1,
+            });
+
+            if (result.canceled) {
+                return;
+            }
+
+            setGlobalLoading(true);
+
+            // 1. Upload mock / Pass to OCR
+            const uploadRes = await scheduleController.uploadScheduleImage({ buffer: result.assets[0].uri, filename: 'schedule.jpg' });
 
             // 2. Process mock
             await scheduleController.processScheduleImage(uploadRes.data!);
@@ -74,6 +99,37 @@ export default function PlanTimeScreen() {
         }
     };
 
+    if (step === 'type_select') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.content}>
+                    <Text style={styles.title}>Welcome!</Text>
+                    <Text style={styles.subtitle}>To help us find the best times for your events, tell us about your daily routine.</Text>
+
+                    <TouchableOpacity style={styles.typeButton} onPress={() => setStep('upload')}>
+                        <View style={styles.typeIconContainer}><Text style={{ fontSize: 24 }}>🎓</Text></View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.typeTitle}>I'm a Student</Text>
+                            <Text style={styles.typeDesc}>Upload your class schedule (OCR) or set it manually.</Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.typeButton} onPress={startManualEntry}>
+                        <View style={styles.typeIconContainer}><Text style={{ fontSize: 24 }}>💼</Text></View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.typeTitle}>I'm Working</Text>
+                            <Text style={styles.typeDesc}>Manually set your working hours and availability.</Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={[styles.linkTouchTarget, { marginTop: 40 }]}>
+                        <Text style={styles.linkText}>Skip for now</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        );
+    }
+
     if (step === 'upload') {
         return (
             <View style={styles.container}>
@@ -82,11 +138,11 @@ export default function PlanTimeScreen() {
                     <Text style={styles.subtitle}>Upload your University timetable. Our AI will automatically extract your busy hours.</Text>
 
                     <TouchableOpacity style={styles.uploadBox} onPress={handleUpload}>
-                        <Text style={styles.uploadText}>📸 Tap to Upload Image</Text>
+                        <Text style={styles.uploadText}>📸 Tap to Choose from Gallery</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.linkTouchTarget}>
-                        <Text style={styles.linkText}>Skip for now</Text>
+                    <TouchableOpacity onPress={startManualEntry} style={styles.linkTouchTarget}>
+                        <Text style={styles.linkText}>Enter manually instead</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -141,6 +197,20 @@ const styles = StyleSheet.create({
     content: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
     title: { fontSize: 28, fontWeight: 'bold', color: '#FFF', marginBottom: 8 },
     subtitle: { fontSize: 16, color: '#94A3B8', marginBottom: 32 },
+
+    typeButton: {
+        backgroundColor: '#1E293B',
+        flexDirection: 'row',
+        padding: 20,
+        borderRadius: 16,
+        marginBottom: 16,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#334155'
+    },
+    typeIconContainer: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#334155', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+    typeTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
+    typeDesc: { color: '#94A3B8', fontSize: 14, lineHeight: 20 },
 
     uploadBox: {
         height: 200,

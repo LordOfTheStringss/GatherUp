@@ -2,13 +2,32 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { PanicButton } from '../../src/components/ui/PanicButton';
+import { AuthManager } from '../../src/core/identity/AuthManager';
 import { useAuthStore } from '../../src/store/authStore';
 import { useUIStore } from '../../src/store/uiStore';
+import { ThemeColors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/useTheme';
 
 export default function ProfileScreen() {
     const { logout, userEmail } = useAuthStore();
-    const { showToast, setGlobalLoading } = useUIStore();
+    const { showToast, setGlobalLoading, themePreference, setThemePreference } = useUIStore();
+    const theme = useTheme();
+    const styles = createStyles(theme);
     const [isAvailable, setIsAvailable] = useState(true);
+    const [username, setUsername] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        const fetchUsername = async () => {
+            try {
+                const user = await AuthManager.getInstance().getCurrentUser();
+                if (user?.user_metadata?.username) {
+                    setUsername(user.user_metadata.username);
+                }
+            } catch (e) { }
+        };
+        fetchUsername();
+    }, []);
 
     // Mock user statistics
     const stats = {
@@ -61,7 +80,7 @@ export default function ProfileScreen() {
                             <Ionicons name="checkmark-circle" size={24} color="#10B981" />
                         </View>
                     </View>
-                    <Text style={styles.userName}>Student User</Text>
+                    <Text style={styles.userName}>{username || (userEmail ? userEmail.split('@')[0].toUpperCase() : 'USER')}</Text>
                     <Text style={styles.userEmail}>{userEmail}</Text>
 
                     <View style={styles.reputationBadge}>
@@ -114,6 +133,8 @@ export default function ProfileScreen() {
                 <View style={styles.actionsContainer}>
                     <Text style={styles.sectionTitle}>Account Setup</Text>
 
+                    <PanicButton />
+
                     <TouchableOpacity style={styles.actionRow} onPress={() => router.push('/(tabs)/edit-profile')} activeOpacity={0.7}>
                         <View style={[styles.actionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
                             <Ionicons name="person-outline" size={22} color="#3B82F6" />
@@ -145,7 +166,18 @@ export default function ProfileScreen() {
                             <Ionicons name="settings-outline" size={22} color="#F59E0B" />
                         </View>
                         <Text style={styles.actionText}>Settings & Privacy</Text>
-                        <Ionicons name="chevron-forward" size={20} color="#64748B" />
+                        <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.actionRow} onPress={() => {
+                        const nextTheme = themePreference === 'dark' ? 'light' : themePreference === 'light' ? 'system' : 'dark';
+                        setThemePreference(nextTheme);
+                    }} activeOpacity={0.7}>
+                        <View style={[styles.actionIcon, { backgroundColor: theme.primaryLight }]}>
+                            <Ionicons name="color-palette-outline" size={22} color={theme.primary} />
+                        </View>
+                        <Text style={styles.actionText}>Appearance: {themePreference.charAt(0).toUpperCase() + themePreference.slice(1)}</Text>
+                        <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
                     </TouchableOpacity>
 
                     <TouchableOpacity style={[styles.actionRow, { borderBottomWidth: 0 }]} onPress={handleLogout} activeOpacity={0.7}>
@@ -161,46 +193,46 @@ export default function ProfileScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: '#020617' },
+const createStyles = (theme: ThemeColors) => StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: theme.background },
     container: { paddingBottom: 40 },
 
     header: { alignItems: 'center', paddingTop: 40, paddingBottom: 32 },
-    avatarContainer: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#3B82F6', justifyContent: 'center', alignItems: 'center', marginBottom: 16, elevation: 8, shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12 },
+    avatarContainer: { width: 100, height: 100, borderRadius: 50, backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 16, elevation: 8, shadowColor: theme.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12 },
     avatarText: { fontSize: 40, fontWeight: '800', color: '#FFF' },
-    badgeIcon: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#020617', borderRadius: 12, padding: 2 },
+    badgeIcon: { position: 'absolute', bottom: 0, right: 0, backgroundColor: theme.background, borderRadius: 12, padding: 2 },
 
-    userName: { fontSize: 24, fontWeight: '800', color: '#F8FAFC', marginBottom: 4 },
-    userEmail: { fontSize: 15, color: '#94A3B8', marginBottom: 16 },
+    userName: { fontSize: 24, fontWeight: '800', color: theme.textPrimary, marginBottom: 4 },
+    userEmail: { fontSize: 15, color: theme.textSecondary, marginBottom: 16 },
 
     reputationBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.15)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)' },
     reputationText: { color: '#F59E0B', fontWeight: '700', marginLeft: 8 },
 
-    statsContainer: { flexDirection: 'row', backgroundColor: '#0F172A', marginHorizontal: 20, borderRadius: 20, paddingVertical: 20, marginBottom: 24, borderWidth: 1, borderColor: '#1E293B' },
+    statsContainer: { flexDirection: 'row', backgroundColor: theme.card, marginHorizontal: 20, borderRadius: 20, paddingVertical: 20, marginBottom: 24, borderWidth: 1, borderColor: theme.cardBorder },
     statBox: { flex: 1, alignItems: 'center' },
-    statBorder: { width: 1, backgroundColor: '#1E293B' },
-    statValue: { fontSize: 24, fontWeight: '900', color: '#F8FAFC', marginBottom: 4 },
-    statLabel: { fontSize: 12, color: '#64748B', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+    statBorder: { width: 1, backgroundColor: theme.cardBorder },
+    statValue: { fontSize: 24, fontWeight: '900', color: theme.textPrimary, marginBottom: 4 },
+    statLabel: { fontSize: 12, color: theme.textSecondary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-    availabilityContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0F172A', marginHorizontal: 20, borderRadius: 20, padding: 20, marginBottom: 32, borderWidth: 1, borderColor: '#1E293B' },
+    availabilityContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: theme.card, marginHorizontal: 20, borderRadius: 20, padding: 20, marginBottom: 32, borderWidth: 1, borderColor: theme.cardBorder },
     availabilityInfo: { flex: 1, paddingRight: 16 },
-    availabilityTitle: { fontSize: 16, fontWeight: '800', color: '#F8FAFC', marginBottom: 4 },
-    availabilityDesc: { fontSize: 13, color: '#94A3B8', lineHeight: 18 },
+    availabilityTitle: { fontSize: 16, fontWeight: '800', color: theme.textPrimary, marginBottom: 4 },
+    availabilityDesc: { fontSize: 13, color: theme.textSecondary, lineHeight: 18 },
     availabilityToggle: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 24, borderWidth: 1 },
     toggleAvailable: { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' },
-    toggleBusy: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' },
+    toggleBusy: { backgroundColor: theme.dangerBg, borderColor: 'rgba(239, 68, 68, 0.3)' },
     toggleKnobWrapper: { marginRight: 8 },
     toggleKnob: { width: 8, height: 8, borderRadius: 4 },
     knobAvailable: { backgroundColor: '#10B981', shadowColor: '#10B981', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4 },
-    knobBusy: { backgroundColor: '#EF4444' },
+    knobBusy: { backgroundColor: theme.danger },
     toggleText: { fontSize: 14, fontWeight: '800' },
     textAvailable: { color: '#10B981' },
-    textBusy: { color: '#EF4444' },
+    textBusy: { color: theme.danger },
 
     actionsContainer: { paddingHorizontal: 20 },
-    sectionTitle: { fontSize: 13, color: '#64748B', fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16, marginLeft: 8 },
+    sectionTitle: { fontSize: 13, color: theme.textSecondary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16, marginLeft: 8 },
 
-    actionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', paddingVertical: 16, paddingHorizontal: 20, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#1E293B' },
+    actionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.card, paddingVertical: 16, paddingHorizontal: 20, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: theme.cardBorder },
     actionIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-    actionText: { flex: 1, fontSize: 16, color: '#F8FAFC', fontWeight: '600' },
+    actionText: { flex: 1, fontSize: 16, color: theme.textPrimary, fontWeight: '600' },
 });

@@ -7,7 +7,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useUIStore } from '../../src/store/uiStore';
 
 export default function EditProfileScreen() {
-    const { showToast } = useUIStore();
+    const { showToast, setGlobalLoading } = useUIStore();
     const { userEmail } = useAuthStore();
 
     // Local State
@@ -37,10 +37,30 @@ export default function EditProfileScreen() {
         }
     };
 
-    const handleSave = () => {
-        // Call backend / store update here
-        showToast('Profile details saved.', 'success');
-        router.back();
+    const handleSave = async () => {
+        const { UserController } = await import('../../src/controllers/UserController');
+        const { UserManager } = await import('../../src/core/identity/UserManager');
+        const { FriendshipManager } = await import('../../src/core/identity/FriendshipManager');
+        const { GamificationManager } = await import('../../src/core/identity/GamificationManager');
+
+        const userController = new UserController(
+            UserManager.getInstance(),
+            {} as any, // FriendshipManager (stub for now if not needed)
+            {} as any  // GamificationManager (stub for now if not needed)
+        );
+
+        setGlobalLoading(true);
+        try {
+            await userController.updateProfile(undefined, {
+                bio: bio
+            });
+            setGlobalLoading(false);
+            showToast('Profile details saved.', 'success');
+            router.back();
+        } catch (error) {
+            setGlobalLoading(false);
+            showToast('Failed to save profile.', 'error');
+        }
     };
 
     return (

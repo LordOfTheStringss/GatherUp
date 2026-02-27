@@ -34,7 +34,7 @@ const SHUFFLED_INTERESTS = [...ALL_INTERESTS].sort(() => 0.5 - Math.random());
 
 // DI stub
 const userController = new UserController(
-    new UserManager(),
+    UserManager.getInstance(),
     new FriendshipManager({} as any, {} as any),
     new GamificationManager()
 );
@@ -130,7 +130,7 @@ export default function InterestsScreen() {
     const saveProfile = async () => {
         setGlobalLoading(true);
         try {
-            await userController.updateProfile("mock-user-id", { interests: selectedInterests });
+            await userController.updateProfile(undefined, { interests: selectedInterests });
             setGlobalLoading(false);
             showToast('Değerlendirmeler kaydedildi!', 'success');
             router.replace('/(auth)/plan');

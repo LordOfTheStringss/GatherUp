@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ChatRoom } from '../../src/core/event/ChatRoom';
@@ -24,11 +24,8 @@ export default function EventDetailScreen() {
             // Create mock chatroom
             const room = new ChatRoom(`room-${id}`);
 
-            // Mock history
-            const mockHist: Message[] = [
-                new Message('msg-1', `room-${id}`, 'user-2', 'Hey, what time are we meeting?'),
-                new Message('msg-2', `room-${id}`, 'user-3', 'Around 18:00 at the library.'),
-            ];
+            // Empty history for purely live presentation
+            const mockHist: Message[] = [];
             room.messages = mockHist; // Internal mutation for UI test
             setChatRoom(room);
             setMessages([...mockHist]);
@@ -76,6 +73,7 @@ export default function EventDetailScreen() {
 
     return (
         <SafeAreaView style={styles.safeArea}>
+            <Stack.Screen options={{ headerShown: false }} />
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
 
                 {/* Header */}
