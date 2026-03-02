@@ -38,15 +38,48 @@ export class NotificationService {
     }
 
     /**
-     * Delivers a standard unicast notification.
+     * Delivers a standard unicast notification and saves it to the DB.
      */
-    public async sendPush(targetUserId: string, title: string, body: string, data: any): Promise<void> {
-        // Find user token and call Expo Push API
+    public async sendPush(targetUserId: string, title: string, body: string, data: any, type: string = 'general'): Promise<void> {
         this.notificationHistory.push({
             id: 'mock-id',
             timestamp: new Date(),
             message: title
         });
+
+        const { error } = await this.supabaseClient.client
+            .from('notifications')
+            .insert({
+                user_id: targetUserId,
+                title: title,
+                body: body,
+                type: type,
+                data: data
+            });
+
+        if (error) {
+            console.error("Failed to insert notification:", error);
+        }
+    }
+
+    public async sendFriendRequestNotification(targetUserId: string, senderName: string, senderId: string): Promise<void> {
+        await this.sendPush(
+            targetUserId,
+            "New Friend Request",
+            `${senderName} wants to connect with you.`,
+            { senderId, action: 'friend_request' },
+            'friend_request'
+        );
+    }
+
+    public async sendEventJoinNotification(targetUserId: string, eventTitle: string, participantName: string): Promise<void> {
+        await this.sendPush(
+            targetUserId,
+            "New Participant",
+            `${participantName} joined your event: ${eventTitle}`,
+            { action: 'event_join' },
+            'event_join'
+        );
     }
 
     /**

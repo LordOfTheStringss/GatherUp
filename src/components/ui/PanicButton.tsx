@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafetyService } from '../../core/event/SafetyService';
 import { AuthManager } from '../../core/identity/AuthManager';
-import { Location, LocationType } from '../../spatial/Location';
 import { useUIStore } from '../../store/uiStore';
 import { ThemeColors } from '../../theme/colors';
 import { useTheme } from '../../theme/useTheme';
@@ -27,12 +26,22 @@ export const PanicButton = () => {
                 currentUser = await authManager.getCurrentUser();
             } catch (e) { }
 
-            // Mock GeoPoint location extraction using actual Location type
-            const mockLocation = new Location('loc-panic', 'Current Location', { latitude: 39.9, longitude: 32.8 }, LocationType.CAMPUS);
-            if (currentUser) {
-                await safetyService.triggerPanic(currentUser, mockLocation);
+            if (!currentUser) throw new Error("Must be logged in to trigger panic.");
+
+            let locationStr = "Unknown Location";
+            try {
+                const Location = await import('expo-location');
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status === 'granted') {
+                    const loc = await Location.getCurrentPositionAsync({});
+                    locationStr = `${loc.coords.latitude}, ${loc.coords.longitude}`;
+                }
+            } catch (e) {
+                console.log("Failed to get panic location", e);
             }
-            showToast('EMERGENCY BROADCAST SENT TO TRUSTED CIRCLE', 'error');
+
+            await safetyService.triggerPanic(currentUser.id, locationStr);
+            showToast('EMERGENCY BROADCAST SENT TO FRIENDS', 'success');
         } catch (e) {
             showToast('Panic signal failed! Call local authorities.', 'error');
         } finally {

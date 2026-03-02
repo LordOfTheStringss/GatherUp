@@ -71,21 +71,25 @@ export default function CreateEventScreen() {
             return;
         }
 
+        if (date <= new Date()) {
+            showToast('Event time cannot be in the past.', 'error');
+            return;
+        }
+
         setGlobalLoading(true);
         try {
-            // Mock parsing
             await eventController.createEvent({
                 title,
                 category,
-                time: date, // Pass the Date object
-                duration: durationStr, // Added duration
+                time: date,
+                duration: durationStr,
                 location_lat: selectedLocation.latitude,
-                location_lng: selectedLocation.longitude
-            } as any); // Passing as any for now depending on EventController definition
+                location_lng: selectedLocation.longitude,
+                is_private: isPrivate
+            } as any);
             showToast('Event Created Successfully!', 'success');
             router.back();
         } catch (e: any) {
-            // e.g. ScheduleOverlapException
             showToast(e.message || 'Creation failed', 'error');
         } finally {
             setGlobalLoading(false);
@@ -95,7 +99,7 @@ export default function CreateEventScreen() {
     const handleAIPlan = async () => {
         setGlobalLoading(true);
         try {
-            // Simulating call to RecommendationEngine.getGroupSuggestion() inside a controller
+            // Wait for 2 seconds to simulate AI checking friends' schedules
             setTimeout(() => {
                 setGlobalLoading(false);
                 showToast('AI found a mutual free slot on Friday 18:00 for "Coffee"!', 'success');
@@ -106,6 +110,7 @@ export default function CreateEventScreen() {
                 suggestionDate.setDate(suggestionDate.getDate() + ((5 + 7 - suggestionDate.getDay()) % 7 || 7));
                 suggestionDate.setHours(18, 0, 0, 0);
                 setDate(suggestionDate);
+                setIsPrivate(true); // AI events are typically private group hangouts
                 setActiveTab('manual');
             }, 2000);
         } catch (e) {
@@ -316,12 +321,12 @@ export default function CreateEventScreen() {
                 <Ionicons name="sparkles" size={56} color="#A78BFA" />
             </View>
             <Text style={styles.aiTitle}>Intelligent Planning</Text>
-            <Text style={styles.aiSubtitle}>Let our AI analyze availability, locations, and interests within your Trusted Circle to find the perfect common ground instantly.</Text>
+            <Text style={styles.aiSubtitle}>Let our AI analyze availability, locations, and interests with your friends to find the perfect common ground instantly.</Text>
 
-            {/* Premium Trusted Circle Selector */}
+            {/* Changed from Trusted Circle to Friends */}
             <View style={styles.trustedCircleLabelContainer}>
                 <Ionicons name="people" size={18} color="#94A3B8" />
-                <Text style={styles.trustedCircleLabel}>TRUSTED CIRCLE</Text>
+                <Text style={styles.trustedCircleLabel}>FRIENDS INCLUDED</Text>
             </View>
 
             <View style={styles.mockFriendList}>

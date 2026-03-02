@@ -18,11 +18,20 @@ export class UserManager {
         return UserManager.instance;
     }
 
-    public async updateProfile(userId: string, data: { bio?: string, interests?: string[], profilePhoto?: string }): Promise<void> {
+    public async updateProfile(userId: string, data: { name?: string, bio?: string, interests?: string[], profilePhoto?: string }): Promise<void> {
         const updateData: any = {};
+        if (data.name) updateData.full_name = data.name;
+
+        if (data.bio) {
+            // Let's store bio in privacy_settings JSONB to avoid altering DB columns unnecessarily
+            const currentUser = await this.getUserProfile(userId);
+            const currentPrivacySettings = currentUser.privacy_settings || {};
+            currentPrivacySettings.bio = data.bio;
+            updateData.privacy_settings = currentPrivacySettings;
+        }
+
         if (data.interests) updateData.interest_tags = data.interests;
         if (data.profilePhoto) updateData.profile_image = data.profilePhoto;
-        // bio is not in public.users, could put in privacy_settings or just ignore for now
 
         if (Object.keys(updateData).length === 0) return;
 

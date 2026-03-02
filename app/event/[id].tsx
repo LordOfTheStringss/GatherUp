@@ -15,33 +15,61 @@ export default function EventDetailScreen() {
     const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
     const [showBadgePopup, setShowBadgePopup] = useState(false);
 
-    // Mock currentUser ID
-    const currentUserId = 'user-1';
+    const [currentUserId, setCurrentUserId] = useState<string>('');
+    const [participants, setParticipants] = useState<any[]>([]);
 
     useEffect(() => {
         // 1. Initialize logic
         const fetchEventData = async () => {
-            // Create mock chatroom
-            const room = new ChatRoom(`room-${id}`);
+            try {
+                // Auth
+                const { AuthManager } = await import('../../src/core/identity/AuthManager');
+                const session = await AuthManager.getInstance().getCurrentUser();
+                if (session) setCurrentUserId(session.id);
 
-            // Empty history for purely live presentation
-            const mockHist: Message[] = [];
-            room.messages = mockHist; // Internal mutation for UI test
-            setChatRoom(room);
-            setMessages([...mockHist]);
+                // Fetch participants
+                const { EventController } = await import('../../src/controllers/EventController');
+                const { EventManager } = await import('../../src/core/event/EventManager');
+                const evController = new EventController(EventManager.getInstance(), {} as any, {} as any);
+                const pRes = await evController.getParticipants(id as string);
+                if (pRes.status === 200 && pRes.data) {
+                    setParticipants(pRes.data);
+                }
+
+                // Create mock chatroom
+                const room = new ChatRoom(`room-${id}`);
+                const mockHist: Message[] = [];
+                room.messages = mockHist; // Internal mutation for UI test
+                setChatRoom(room);
+                setMessages([...mockHist]);
+            } catch (error) {
+                console.error("Failed to load event data", error);
+            }
         };
 
         fetchEventData();
     }, [id]);
 
+    const handleAddFriend = async (friendId: string) => {
+        try {
+            const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+            const { error: insertErr } = await SupabaseClient.getInstance().client.from('friendships').insert({
+                user_id: currentUserId,
+                friend_id: friendId
+            });
+            if (insertErr) throw insertErr;
+            showToast("Friend request sent!", "success");
+        } catch (e: any) {
+            showToast("Could not send request: " + e.message, "error");
+        }
+    };
+
     const sendMessage = () => {
-        if (!inputText.trim() || !chatRoom) return;
+        if (!inputText.trim() || !chatRoom || !currentUserId) return;
 
         // Create new message
         const newMsg = new Message(`msg-${Date.now()}`, chatRoom.roomId, currentUserId, inputText);
 
-        // Technically you should go through EventController -> ChatRoom,
-        // but demonstrating UI structure here
         setMessages(prev => [...prev, newMsg]);
         setInputText('');
     };
@@ -85,6 +113,28 @@ export default function EventDetailScreen() {
                     <TouchableOpacity onPress={handleEndEvent} style={styles.endBtn}>
                         <Text style={styles.endBtnText}>End</Text>
                     </TouchableOpacity>
+                </View>
+
+                {/* Top Section - Participants (Horizontal list or small view) */}
+                <View style={styles.participantsContainer}>
+                    <Text style={styles.sectionTitle}>Participants ({participants.length})</Text>
+                    <FlatList
+                        horizontal
+                        data={participants}
+                        keyExtractor={(p) => p.id}
+                        showsHorizontalScrollIndicator={false}
+                        renderItem={({ item }) => (
+                            <View style={styles.participantItem}>
+                                <View style={styles.pAvatar}><Text style={styles.pAvatarText}>{item.full_name?.charAt(0) || 'U'}</Text></View>
+                                <Text style={styles.pName} numberOfLines={1}>{item.full_name?.split(' ')[0]}</Text>
+                                {item.id !== currentUserId && (
+                                    <TouchableOpacity style={styles.pAddBtn} onPress={() => handleAddFriend(item.id)}>
+                                        <Ionicons name="person-add" size={12} color="#FFF" />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        )}
+                    />
                 </View>
 
                 {/* Chat Area */}
@@ -194,4 +244,49 @@ const styles = StyleSheet.create({
 
     skipBtn: { paddingVertical: 12 },
     skipText: { color: '#94A3B8', fontSize: 16, fontWeight: 'bold' },
+
+    // Participants
+    participantsContainer: {
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        backgroundColor: '#0F172A',
+        borderBottomWidth: 1,
+        borderBottomColor: '#1E293B'
+    },
+    sectionTitle: {
+        color: '#94A3B8',
+        fontSize: 12,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+        marginBottom: 12
+    },
+    participantItem: {
+        alignItems: 'center',
+        marginRight: 16,
+        width: 60
+    },
+    pAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#3B82F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8
+    },
+    pAvatarText: { color: '#FFF', fontWeight: 'bold', fontSize: 20 },
+    pName: { color: '#E2E8F0', fontSize: 12, textAlign: 'center' },
+    pAddBtn: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        backgroundColor: '#10B981',
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#0F172A'
+    }
 });

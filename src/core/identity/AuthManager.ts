@@ -45,29 +45,35 @@ export class AuthManager {
             throw new Error(error.message);
         }
 
-        // To manually ensure the public.users table gets the user info initially
-        if (authData?.user) {
-            // We'll upsert just in case the Supabase trigger doesn't exist yet
-            await this.supabaseClient.client.from('users').upsert({
-                id: authData.user.id,
-                email: data.email,
-                name: data.fullName,
-                profile_image: null,
-            }, { onConflict: 'id' }).catch((e: any) => console.log('Upsert public user warning (maybe handled by trigger):', e));
-        }
-
         return true;
     }
 
-    public async login(email: string, pass: string): Promise<any> {
+    public async login(identifier: string, pass: string): Promise<any> {
+        let loginEmail = identifier;
+
+        // If it's not an email format, assume it's a username and try to look up the email
+        if (!identifier.includes('@')) {
+            const { data: userRecord, error: userError } = await this.supabaseClient.client
+                .from('users')
+                .select('email')
+                .eq('username', identifier)
+                .single();
+
+            if (userError || !userRecord) {
+                console.error('Username lookup failed:', userError);
+                throw new Error("Invalid username or password.");
+            }
+            loginEmail = userRecord.email;
+        }
+
         const { data, error } = await this.supabaseClient.client.auth.signInWithPassword({
-            email,
+            email: loginEmail,
             password: pass,
         });
 
         if (error) {
             console.error('Login failed:', error);
-            throw new Error(error.message);
+            throw new Error("Invalid username or password.");
         }
 
         if (data?.session) {

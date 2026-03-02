@@ -5,19 +5,19 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useUIStore } from '../../src/store/uiStore';
 
 export default function LoginScreen() {
-    const [email, setEmail] = useState('');
+    const [identifier, setIdentifier] = useState('');
     const [password, setPassword] = useState('');
     const { login } = useAuthStore();
     const { showToast } = useUIStore();
 
     const handleLogin = async () => {
-        if (!email || !password) {
-            showToast('Please enter both email and password.', 'error');
+        if (!identifier || !password) {
+            showToast('Please enter your username/email and password.', 'error');
             return;
         }
 
         try {
-            const success = await login({ email, password });
+            const success = await login({ email: identifier, password });
             if (success) {
                 showToast('Login successful!', 'success');
                 router.replace('/(tabs)');
@@ -35,16 +35,19 @@ export default function LoginScreen() {
             style={styles.container}
         >
             <View style={styles.formContainer}>
+                <View style={styles.logoContainer}>
+                    <Text style={styles.logoText}>Gather<Text style={{ color: '#3B82F6' }}>Up</Text></Text>
+                </View>
+
                 <Text style={styles.title}>Welcome Back</Text>
                 <Text style={styles.subtitle}>Log in to access your trusted circle.</Text>
 
                 <TextInput
                     style={styles.input}
-                    placeholder="Institutional Email (.edu.tr)"
+                    placeholder="Username or Institutional Email"
                     placeholderTextColor="#7f8c8d"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
+                    value={identifier}
+                    onChangeText={setIdentifier}
                     autoCapitalize="none"
                 />
 
@@ -81,6 +84,16 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         paddingHorizontal: 24,
+    },
+    logoContainer: {
+        alignItems: 'center',
+        marginBottom: 32,
+    },
+    logoText: {
+        fontSize: 32,
+        fontWeight: '900',
+        color: '#F8FAFC',
+        letterSpacing: -0.5,
     },
     title: {
         fontSize: 28,

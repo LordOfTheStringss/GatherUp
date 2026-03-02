@@ -44,6 +44,7 @@ export class EventManager {
                 end_time: endTime.toISOString(),
                 location_lat: eventData.location_lat,
                 location_lng: eventData.location_lng,
+                is_private: eventData.is_private || false
             })
             .select()
             .single();
@@ -56,12 +57,7 @@ export class EventManager {
     }
 
     public async getEvents(filter: EventFilterDTO): Promise<any[]> {
-        // Fetch events and join with users table to get host data
-        let query = this.supabaseClient.client.from('events').select('*, host_details:users!events_organizer_id_fkey(full_name)');
-        // Fallback or simpler approach if above fails: .select('*, users(full_name)') 
-        // We'll just try the simpler one first since it is usually sufficient if one FK exists.
-        // Actually the safest simple way is .select('*, users(full_name)')
-        query = this.supabaseClient.client.from('events').select('*, users!events_organizer_id_fkey(full_name)');
+        let query = this.supabaseClient.client.from('events').select('*, users!events_organizer_id_fkey(full_name)');
 
         if (filter.category && filter.category !== 'All') {
             query = query.eq('sub_category', filter.category);
@@ -76,10 +72,74 @@ export class EventManager {
             console.error('Get events error:', error);
             throw new Error(error.message);
         }
-        return data || [];
+
+        let results = data || [];
+
+        // Apply local geographic filtering if requested
+        if (filter.location && filter.radius) {
+            results = results.filter(event => {
+                if (!event.location_lat || !event.location_lng) return false;
+                const dist = this.calculateDistance(
+                    filter.location!.latitude,
+                    filter.location!.longitude,
+                    event.location_lat,
+                    event.location_lng
+                );
+                return dist <= filter.radius!;
+            });
+        }
+
+        return results;
+    }
+
+    private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+        const R = 6371; // km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
     }
 
     public async joinEvent(eventId: string, userId: string): Promise<void> {
+        // 1. Fetch event to check time and capacity
+        const { data: eventData, error: eventErr } = await this.supabaseClient.client
+            .from('events')
+            .select('start_time, end_time, max_capacity, title, organizer_id')
+            .eq('id', eventId)
+            .single();
+
+        if (eventErr || !eventData) {
+            throw new Error('Event not found.');
+        }
+
+        // Check time constraints
+        const now = new Date();
+        const endTime = new Date(eventData.end_time);
+        if (now > endTime) {
+            throw new Error('This event has already ended.');
+        }
+
+        // 2. Check current capacity
+        const { count, error: countErr } = await this.supabaseClient.client
+            .from('event_participants')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', eventId);
+
+        if (countErr) {
+            throw new Error('Failed to verify capacity: ' + countErr.message);
+        }
+
+        const currentCount = count || 0;
+        const maxCapacity = eventData.max_capacity || 9999; // Fallback if null
+
+        if (currentCount >= maxCapacity) {
+            throw new Error('This event has reached its maximum capacity.');
+        }
+
+        // 3. Insert participant
         const { error } = await this.supabaseClient.client
             .from('event_participants')
             .insert({
@@ -88,8 +148,46 @@ export class EventManager {
             });
 
         if (error) {
+            // Check for unique constraint violation (already joined)
+            if (error.code === '23505') {
+                throw new Error('You have already joined this event.');
+            }
             console.error('Join event error:', error);
             throw new Error(error.message);
         }
+
+        // 4. Send Notification to Organizer
+        if (userId !== eventData.organizer_id) {
+            const { data: participant } = await this.supabaseClient.client
+                .from('users')
+                .select('full_name')
+                .eq('id', userId)
+                .single();
+
+            if (participant) {
+                const { NotificationService } = await import('../../infra/NotificationService');
+                await NotificationService.getInstance().sendEventJoinNotification(
+                    eventData.organizer_id,
+                    eventData.title,
+                    participant.full_name
+                );
+            }
+        }
+    }
+    public async getEventParticipants(eventId: string): Promise<any[]> {
+        const { data, error } = await this.supabaseClient.client
+            .from('event_participants')
+            .select(`
+                user_id,
+                users!event_participants_user_id_fkey (id, full_name, profile_image)
+            `)
+            .eq('event_id', eventId);
+
+        if (error) {
+            console.error('getEventParticipants error:', error);
+            throw new Error(error.message);
+        }
+
+        return (data || []).map((p: any) => p.users);
     }
 }

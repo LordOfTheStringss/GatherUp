@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Platform, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -26,11 +27,29 @@ export default function HomeScreen() {
     const [myEvents, setMyEvents] = useState<EventStub[]>([]);
 
     const [activeTab, setActiveTab] = useState<'friends' | 'my' | 'nearby'>('friends');
+    const [radius, setRadius] = useState<number>(5); // Default 5km
+    const RADIUS_OPTIONS = [1, 5, 10, 15, 25];
 
     const loadFeeds = async () => {
         try {
             const user = await AuthManager.getInstance().getCurrentUser();
-            const nearbyRes = await eventController.getEvents({ category: 'All' });
+
+            // 1. Fetch Location for Nearby
+            let loc: { latitude: number, longitude: number } | undefined = undefined;
+            if (activeTab === 'nearby') {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status === 'granted') {
+                    const location = await Location.getCurrentPositionAsync({});
+                    loc = { latitude: location.coords.latitude, longitude: location.coords.longitude };
+                } else {
+                    showToast('Location permission is required for nearby events.', 'error');
+                }
+            }
+
+            const nearbyRes = await eventController.getEvents(
+                activeTab === 'nearby' && loc ? { category: 'All', location: loc, radius } : { category: 'All' }
+            );
+
             let myRes: any = { data: [] };
             if (user) {
                 myRes = await eventController.getEvents({ organizerId: user.id });
@@ -51,8 +70,13 @@ export default function HomeScreen() {
                 // Filter out my own events from nearby/friends feed
                 const filteredOthers = user ? nearbyRes.data.filter((e: any) => e.organizer_id !== user.id) : nearbyRes.data;
                 const mappedOthers = mapEvents(filteredOthers);
-                setNearbyEvents(mappedOthers);
-                setFriendsEvents(mappedOthers); // For now, show same events until friendship filtering is added
+
+                if (activeTab === 'nearby') {
+                    setNearbyEvents(mappedOthers);
+                } else {
+                    setFriendsEvents(mappedOthers); // For now, friends feed is just all events
+                    setNearbyEvents(mappedOthers);
+                }
             }
             if (myRes.data) {
                 setMyEvents(mapEvents(myRes.data));
@@ -64,7 +88,7 @@ export default function HomeScreen() {
 
     useEffect(() => {
         loadFeeds();
-    }, []);
+    }, [activeTab, radius]);
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -158,7 +182,11 @@ export default function HomeScreen() {
                             <Text style={styles.subGreeting}>Finding your next social spark.</Text>
                         </View>
                     </View>
-                    <TouchableOpacity style={styles.headerAvatar} activeOpacity={0.7}>
+                    <TouchableOpacity
+                        style={styles.headerAvatar}
+                        activeOpacity={0.7}
+                        onPress={() => router.push('/(tabs)/notifications')}
+                    >
                         <Ionicons name="notifications-outline" size={24} color={theme.textPrimary} />
                     </TouchableOpacity>
                 </View>
@@ -184,6 +212,24 @@ export default function HomeScreen() {
                         <Text style={[styles.segmentText, activeTab === 'nearby' && styles.segmentTextActive]}>Nearby</Text>
                     </TouchableOpacity>
                 </View>
+
+                {/* Radius Selector for Nearby Tab */}
+                {activeTab === 'nearby' && (
+                    <View style={styles.radiusContainer}>
+                        <Text style={styles.radiusLabel}>Distance:</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.radiusScroll}>
+                            {RADIUS_OPTIONS.map(opt => (
+                                <TouchableOpacity
+                                    key={opt}
+                                    style={[styles.radiusBtn, radius === opt && styles.radiusBtnActive]}
+                                    onPress={() => setRadius(opt)}
+                                >
+                                    <Text style={[styles.radiusText, radius === opt && styles.radiusTextActive]}>{opt} km</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
 
                 {/* Vertical Feed */}
                 <View style={styles.verticalFeedContainer}>
@@ -254,6 +300,15 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
     },
     eventCardFriends: { backgroundColor: theme.background, borderColor: theme.primaryLight, padding: 20 },
     eventCardNearby: { backgroundColor: theme.card },
+
+    // Radius Selector Styles
+    radiusContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+    radiusLabel: { color: theme.textSecondary, fontSize: 14, fontWeight: '700', marginRight: 12 },
+    radiusScroll: { flexGrow: 0 },
+    radiusBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: theme.cardBorder, marginRight: 8 },
+    radiusBtnActive: { backgroundColor: theme.primary },
+    radiusText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
+    radiusTextActive: { color: '#FFF' },
 
     // Friends Card Specifics
     friendCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },

@@ -10,12 +10,18 @@ export default function RegisterScreen() {
     const [age, setAge] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const { register } = useAuthStore();
     const { showToast } = useUIStore();
 
     const handleRegister = async () => {
-        if (!fullName || !username || !age || !email || !password) {
+        if (!fullName || !username || !age || !email || !password || !confirmPassword) {
             showToast('Please fill in all fields.', 'error');
+            return;
+        }
+
+        if (password !== confirmPassword) {
+            showToast('Passwords do not match.', 'error');
             return;
         }
 
@@ -40,7 +46,11 @@ export default function RegisterScreen() {
             style={styles.container}
         >
             <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-                <Text style={styles.title}>Join Gather Up</Text>
+                <View style={styles.logoContainer}>
+                    <Text style={styles.logoText}>Gather<Text style={{ color: '#3B82F6' }}>Up</Text></Text>
+                </View>
+
+                <Text style={styles.title}>Create Account</Text>
                 <Text style={styles.subtitle}>Use your institutional email to join your campus network.</Text>
 
                 <TextInput
@@ -90,6 +100,15 @@ export default function RegisterScreen() {
                     secureTextEntry
                 />
 
+                <TextInput
+                    style={styles.input}
+                    placeholder="Confirm Password"
+                    placeholderTextColor="#7f8c8d"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry
+                />
+
                 <TouchableOpacity style={styles.button} onPress={handleRegister}>
                     <Text style={styles.buttonText}>Sign Up</Text>
                 </TouchableOpacity>
@@ -115,6 +134,16 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingHorizontal: 24,
         paddingVertical: 40,
+    },
+    logoContainer: {
+        alignItems: 'center',
+        marginBottom: 32,
+    },
+    logoText: {
+        fontSize: 32,
+        fontWeight: '900',
+        color: '#F8FAFC',
+        letterSpacing: -0.5,
     },
     title: {
         fontSize: 28,

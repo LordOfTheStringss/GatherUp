@@ -13,10 +13,12 @@ export interface CreateEventDTO {
     duration?: string;
     location_lat?: number;
     location_lng?: number;
+    is_private?: boolean;
 }
 
 export interface EventFilterDTO {
     location?: GeoPoint;
+    radius?: number; // In kilometers
     startTime?: Date;
     category?: string;
     organizerId?: string;
@@ -50,6 +52,13 @@ export class EventController {
         try {
             const user = await AuthManager.getInstance().getCurrentUser();
             if (!user) throw new Error("Authentication required");
+
+            if (request.time) {
+                const eventDate = new Date(request.time);
+                if (eventDate <= new Date()) {
+                    throw new Error("Event time cannot be in the past.");
+                }
+            }
 
             const event = await this.eventManager.createEvent(user.id, request);
             return { status: 201, data: event, message: "Event Created" };
@@ -104,5 +113,14 @@ export class EventController {
      */
     public async getSuggestions(location: GeoPoint): Promise<ResponseEntity<Event[]>> {
         return { status: 200, data: [] };
+    }
+
+    public async getParticipants(eventId: string): Promise<ResponseEntity<any[]>> {
+        try {
+            const participants = await this.eventManager.getEventParticipants(eventId);
+            return { status: 200, data: participants };
+        } catch (error: any) {
+            return { status: 500, message: error.message };
+        }
     }
 }

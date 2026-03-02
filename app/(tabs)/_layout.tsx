@@ -98,6 +98,18 @@ export default function TabLayout() {
                     href: null, // Hides it from the tab bar
                 }}
             />
+            <Tabs.Screen
+                name="ocr-schedule"
+                options={{
+                    href: null, // Hides it from the tab bar
+                }}
+            />
+            <Tabs.Screen
+                name="notifications"
+                options={{
+                    href: null, // Hides it from the tab bar
+                }}
+            />
         </Tabs>
     );
 }

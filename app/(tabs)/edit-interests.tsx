@@ -1,8 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
-import { Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { UserController } from '../../src/controllers/UserController';
+import { FriendshipManager } from '../../src/core/identity/FriendshipManager';
+import { GamificationManager } from '../../src/core/identity/GamificationManager';
+import { UserManager } from '../../src/core/identity/UserManager';
 import { useUIStore } from '../../src/store/uiStore';
+import { ThemeColors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/useTheme';
 
 const ALL_CATEGORIES = {
     "Spor": [
@@ -26,12 +32,37 @@ const ALL_CATEGORIES = {
     ]
 };
 
-// Mock Initial data that would come from the UserController
-const MOCK_INITIAL_SELECTED = ["Yazılım", "Basketbol", "Sinema", "Kahve", "Kitap"];
+// DI stub
+const userController = new UserController(
+    UserManager.getInstance(),
+    new FriendshipManager({} as any),
+    new GamificationManager()
+);
 
 export default function EditInterestsScreen() {
+    const theme = useTheme();
+    const styles = createStyles(theme);
     const { showToast, setGlobalLoading } = useUIStore();
-    const [selectedInterests, setSelectedInterests] = useState<Set<string>>(new Set(MOCK_INITIAL_SELECTED));
+    const [selectedInterests, setSelectedInterests] = useState<Set<string>>(new Set());
+    const [hasChanges, setHasChanges] = useState(false);
+
+    useEffect(() => {
+        const fetchCurrentInterests = async () => {
+            setGlobalLoading(true);
+            try {
+                const res = await userController.getMyProfile();
+                if (res.status === 200 && res.data && res.data.interests) {
+                    setSelectedInterests(new Set(res.data.interests));
+                }
+            } catch (e) {
+                console.error("Failed to load interests:", e);
+                showToast("Failed to load your interests.", "error");
+            } finally {
+                setGlobalLoading(false);
+            }
+        };
+        fetchCurrentInterests();
+    }, []);
 
     const toggleInterest = (interest: string) => {
         setSelectedInterests(prev => {
@@ -43,37 +74,47 @@ export default function EditInterestsScreen() {
             }
             return newSet;
         });
+        setHasChanges(true);
     };
 
     const handleSave = async () => {
         setGlobalLoading(true);
         try {
-            // Mock network call
-            await new Promise(resolve => setTimeout(resolve, 800));
-            // e.g. await userController.updateProfile("mock-user", { interests: Array.from(selectedInterests) })
-            setGlobalLoading(false);
-            showToast('İlgi alanları başarıyla güncellendi!', 'success');
+            await userController.updateProfile(undefined, { interests: Array.from(selectedInterests) });
+            showToast('Interests updated successfully!', 'success');
+            setHasChanges(false);
             router.back();
         } catch (error) {
+            console.error("Save error:", error);
+            showToast('Failed to save interests.', 'error');
+        } finally {
             setGlobalLoading(false);
-            showToast('Güncelleme başarısız oldu.', 'error');
         }
     };
 
     return (
         <SafeAreaView style={styles.safeArea}>
-            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={28} color="#FFF" />
+                    <Ionicons name="arrow-back" size={28} color={theme.textPrimary} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>İlgi Alanlarımı Düzenle</Text>
-                {/* Invisible spacer for center alignment */}
-                <View style={{ width: 28 }} />
+                <Text style={styles.headerTitle}>Manage Interests</Text>
+                {hasChanges ? (
+                    <TouchableOpacity onPress={handleSave} style={styles.saveBtn}>
+                        <Text style={styles.saveBtnText}>Save</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <View style={{ width: 60 }} />
+                )}
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <Text style={styles.subtitle}>Sana uygun etkinlikler önerebilmemiz için beğendiğin kategorileri işaretle.</Text>
+                <View style={styles.infoBox}>
+                    <Ionicons name="information-circle-outline" size={24} color={theme.primary} />
+                    <Text style={styles.infoText}>
+                        Your interests help us match you with events you'll love. Select all that apply!
+                    </Text>
+                </View>
 
                 {Object.entries(ALL_CATEGORIES).map(([categoryName, items]) => (
                     <View key={categoryName} style={styles.categorySection}>
@@ -84,15 +125,15 @@ export default function EditInterestsScreen() {
                                 return (
                                     <TouchableOpacity
                                         key={item}
-                                        style={[styles.chip, isSelected ? styles.chipSelected : styles.chipUnselected]}
+                                        style={[styles.chip, isSelected && styles.chipSelected]}
                                         onPress={() => toggleInterest(item)}
                                         activeOpacity={0.7}
                                     >
-                                        <Text style={[styles.chipText, isSelected ? styles.chipTextSelected : styles.chipTextUnselected]}>
+                                        <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
                                             {item}
                                         </Text>
                                         {isSelected && (
-                                            <Ionicons name="checkmark" size={16} color="#FFF" style={{ marginLeft: 4 }} />
+                                            <Ionicons name="checkmark" size={16} color="#FFF" style={{ marginLeft: 6 }} />
                                         )}
                                     </TouchableOpacity>
                                 );
@@ -101,39 +142,31 @@ export default function EditInterestsScreen() {
                     </View>
                 ))}
             </ScrollView>
-
-            <View style={styles.footer}>
-                <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.8}>
-                    <Text style={styles.saveButtonText}>Kaydet ({selectedInterests.size} seçilen)</Text>
-                </TouchableOpacity>
-            </View>
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: '#020617' },
+const createStyles = (theme: ThemeColors) => StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: theme.background },
 
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'android' ? 40 : 10, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1E293B' },
-    backBtn: { minHeight: 44, justifyContent: 'center' },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: '#F8FAFC' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: theme.cardBorder },
+    backBtn: { minHeight: 44, justifyContent: 'center', width: 60 },
+    headerTitle: { fontSize: 20, fontWeight: '800', color: theme.textPrimary },
+    saveBtn: { width: 60, alignItems: 'flex-end', justifyContent: 'center' },
+    saveBtnText: { color: theme.primary, fontSize: 16, fontWeight: 'bold' },
 
     scrollContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
-    subtitle: { fontSize: 15, color: '#94A3B8', marginBottom: 24, lineHeight: 22 },
+
+    infoBox: { flexDirection: 'row', backgroundColor: theme.primaryLight, padding: 16, borderRadius: 12, marginBottom: 24, alignItems: 'center' },
+    infoText: { flex: 1, color: theme.textPrimary, marginLeft: 12, fontSize: 14, lineHeight: 20 },
 
     categorySection: { marginBottom: 32 },
-    categoryTitle: { fontSize: 18, fontWeight: '800', color: '#E2E8F0', marginBottom: 16, letterSpacing: 0.5 },
+    categoryTitle: { fontSize: 18, fontWeight: '800', color: theme.textPrimary, marginBottom: 16, letterSpacing: 0.5 },
 
     chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-    chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
-    chipUnselected: { backgroundColor: '#0F172A', borderColor: '#334155' },
-    chipSelected: { backgroundColor: '#3B82F6', borderColor: '#3B82F6', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
+    chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+    chipSelected: { backgroundColor: theme.primary, borderColor: theme.primary, shadowColor: theme.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
 
-    chipText: { fontSize: 15, fontWeight: '600' },
-    chipTextUnselected: { color: '#94A3B8' },
-    chipTextSelected: { color: '#FFFFFF' },
-
-    footer: { padding: 20, backgroundColor: '#020617', borderTopWidth: 1, borderTopColor: '#1E293B' },
-    saveButton: { backgroundColor: '#10B981', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: '#10B981', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
-    saveButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
+    chipText: { fontSize: 14, fontWeight: '600', color: theme.textSecondary },
+    chipTextSelected: { color: '#FFFFFF', fontWeight: '800' },
 });

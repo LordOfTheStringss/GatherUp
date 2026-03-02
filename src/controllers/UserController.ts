@@ -5,6 +5,7 @@ import { UserManager } from '../core/identity/UserManager';
 import { ResponseEntity } from './ResponseEntity';
 
 export interface UpdateProfileDTO {
+    name?: string;
     bio?: string;
     interests?: string[];
     profilePhoto?: string;
@@ -15,12 +16,14 @@ export interface PublicProfileDTO {
     fullName: string;
     trustScore: number;
     interestTags: string[];
+    bio?: string;
 }
 
 export interface UserDTO {
     id: string;
     email: string;
     fullName: string;
+    bio?: string;
     xp: number;
     badges: string[];
 }
@@ -48,7 +51,7 @@ export class UserController {
     /**
      * Returns user profile including XP and badges.
      */
-    public async getMyProfile(userId?: string): Promise<ResponseEntity<UserDTO>> {
+    public async getMyProfile(userId?: string): Promise<ResponseEntity<any>> {
         try {
             let effectiveId: string;
             if (!userId || userId === "mock-user-id") {
@@ -59,14 +62,27 @@ export class UserController {
                 effectiveId = userId;
             }
             const user = await this.userManager.getUserProfile(effectiveId);
+
+            // Get stats
+            const sClient = require('../infra/SupabaseClient').SupabaseClient.getInstance().client;
+            const { count: eventsAttended } = await sClient.from('event_participants').select('*', { count: 'exact', head: true }).eq('user_id', effectiveId);
+            const { count: eventsHosted } = await sClient.from('events').select('*', { count: 'exact', head: true }).eq('organizer_id', effectiveId);
+            const friends = await this.friendshipManager.getTrustedCircle(effectiveId);
+
             return {
                 status: 200,
                 data: {
                     id: user.id,
                     email: user.email,
                     fullName: user.full_name || '',
+                    bio: user.privacy_settings?.bio || '',
                     xp: user.reputation_score || 0,
-                    badges: user.badges || []
+                    badges: user.badges || [],
+                    stats: {
+                        eventsAttended: eventsAttended || 0,
+                        eventsHosted: eventsHosted || 0,
+                        trustedCircleCount: friends.length
+                    }
                 }
             };
         } catch (error: any) {
@@ -89,6 +105,7 @@ export class UserController {
             }
             if (!data) throw new Error("Update data required");
             await this.userManager.updateProfile(effectiveId, {
+                name: data.name,
                 bio: data.bio,
                 interests: data.interests,
                 profilePhoto: data.profilePhoto
@@ -110,6 +127,7 @@ export class UserController {
                 data: {
                     id: user.id,
                     fullName: user.full_name || '',
+                    bio: user.privacy_settings?.bio || '',
                     trustScore: user.reputation_score || 0,
                     interestTags: user.interest_tags || []
                 }
@@ -119,23 +137,13 @@ export class UserController {
         }
     }
 
-    /**
-     * Calls friendshipManager.sendRequest().
-     */
+    // -- Friends placeholders, will improve later
     public async sendFriendRequest(toUserId: string): Promise<ResponseEntity> {
         return { status: 201, message: "Request Sent" };
     }
-
-    /**
-     * Calls accept or reject operations of FriendshipManager.
-     */
     public async respondToFriendRequest(requestId: string, action: FriendAction): Promise<ResponseEntity> {
         return { status: 200, message: `Request ${action}` };
     }
-
-    /**
-     * Returns the friend list.
-     */
     public async getTrustedCircle(): Promise<ResponseEntity<UserDTO[]>> {
         return { status: 200, data: [] };
     }

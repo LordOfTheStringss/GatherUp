@@ -42,3 +42,9 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Antigravity Agent files
+.agent_task.md
+.agent_implementation_plan.md
+.agent/
+

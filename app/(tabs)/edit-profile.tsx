@@ -11,9 +11,27 @@ export default function EditProfileScreen() {
     const { userEmail } = useAuthStore();
 
     // Local State
-    const [name, setName] = useState('Student User');
-    const [bio, setBio] = useState('Computer Science Major. Always looking for coding buddies and basketball matches.');
+    const [name, setName] = useState('');
+    const [bio, setBio] = useState('');
     const [profilePic, setProfilePic] = useState<string | null>(null);
+
+    React.useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                const { UserController } = await import('../../src/controllers/UserController');
+                const { UserManager } = await import('../../src/core/identity/UserManager');
+                const controller = new UserController(UserManager.getInstance(), {} as any, {} as any);
+                const res = await controller.getMyProfile();
+                if (res.status === 200 && res.data) {
+                    setName(res.data.fullName || '');
+                    setBio(res.data.bio || '');
+                }
+            } catch (e) {
+                console.error("Failed to load profile:", e);
+            }
+        };
+        fetchProfile();
+    }, []);
 
     const pickImage = async () => {
         // Request permissions
@@ -52,6 +70,7 @@ export default function EditProfileScreen() {
         setGlobalLoading(true);
         try {
             await userController.updateProfile(undefined, {
+                name: name,
                 bio: bio
             });
             setGlobalLoading(false);

@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { PanicButton } from '../../src/components/ui/PanicButton';
-import { AuthManager } from '../../src/core/identity/AuthManager';
 import { useAuthStore } from '../../src/store/authStore';
 import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
@@ -15,26 +14,129 @@ export default function ProfileScreen() {
     const theme = useTheme();
     const styles = createStyles(theme);
     const [isAvailable, setIsAvailable] = useState(true);
-    const [username, setUsername] = React.useState<string | null>(null);
+    const [stats, setStats] = useState({
+        eventsAttended: 0,
+        eventsHosted: 0,
+        trustedCircleCount: 0,
+        reputationScore: 0
+    });
+    const [friendsModalVisible, setFriendsModalVisible] = useState(false);
+    const [friends, setFriends] = useState<any[]>([]);
+    const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+    const [newFriendUsername, setNewFriendUsername] = useState('');
+    const [username, setUsername] = useState<string | null>(null);
 
     React.useEffect(() => {
-        const fetchUsername = async () => {
+        const fetchProfileData = async () => {
             try {
-                const user = await AuthManager.getInstance().getCurrentUser();
-                if (user?.user_metadata?.username) {
-                    setUsername(user.user_metadata.username);
+                const { UserController } = await import('../../src/controllers/UserController');
+                const { UserManager } = await import('../../src/core/identity/UserManager');
+                const { FriendshipManager } = await import('../../src/core/identity/FriendshipManager');
+
+                const userController = new UserController(UserManager.getInstance(), new FriendshipManager({} as any), {} as any);
+                const res = await userController.getMyProfile();
+
+                if (res.status === 200 && res.data) {
+                    setUsername(res.data.fullName || null);
+                    if (res.data.stats) {
+                        setStats({
+                            eventsAttended: res.data.stats.eventsAttended,
+                            eventsHosted: res.data.stats.eventsHosted,
+                            trustedCircleCount: res.data.stats.trustedCircleCount,
+                            reputationScore: res.data.xp || 0
+                        });
+                    }
                 }
-            } catch (e) { }
+            } catch (e) {
+                console.error("Profile load err", e);
+            }
         };
-        fetchUsername();
+        fetchProfileData();
     }, []);
 
-    // Mock user statistics
-    const stats = {
-        eventsAttended: 12,
-        eventsHosted: 3,
-        trustedCircleCount: 45,
-        reputationScore: 850
+    const loadFriends = async () => {
+        try {
+            setGlobalLoading(true);
+            const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+            const { AuthManager } = await import('../../src/core/identity/AuthManager');
+            const { FriendshipManager } = await import('../../src/core/identity/FriendshipManager');
+
+            const sessionData = await AuthManager.getInstance().getCurrentUser();
+            if (!sessionData) throw new Error("Not auth");
+
+            const fm = new FriendshipManager({} as any);
+            const circle = await fm.getTrustedCircle(sessionData.id);
+            const requests = await fm.getPendingRequests(sessionData.id);
+
+            setFriends(circle);
+            setPendingRequests(requests);
+            setGlobalLoading(false);
+            setFriendsModalVisible(true);
+        } catch (e: any) {
+            setGlobalLoading(false);
+            showToast(e.message, 'error');
+        }
+    };
+
+    const handleSendRequest = async () => {
+        if (!newFriendUsername.trim()) return;
+        try {
+            const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+            const { AuthManager } = await import('../../src/core/identity/AuthManager');
+            const sClient = SupabaseClient.getInstance().client;
+
+            const userSession = await AuthManager.getInstance().getCurrentUser();
+
+            // Search user by full_name or email
+            const { data, error } = await sClient.from('users')
+                .select('id')
+                .or(`full_name.ilike.%${newFriendUsername}%,email.ilike.%${newFriendUsername}%`)
+                .single();
+
+            if (error || !data) {
+                showToast("User not found!", "error");
+                return;
+            }
+
+            const { error: insertErr } = await sClient.from('friendships').insert({
+                user_id: userSession.id,
+                friend_id: data.id
+            });
+
+            if (insertErr) throw new Error(insertErr.message);
+            showToast("Friend request sent!", "success");
+            setNewFriendUsername('');
+        } catch (e: any) {
+            showToast("Could not send request: " + e.message, "error");
+        }
+    };
+
+    const handleAccept = async (friendId: string) => {
+        try {
+            const { AuthManager } = await import('../../src/core/identity/AuthManager');
+            const { FriendshipManager } = await import('../../src/core/identity/FriendshipManager');
+            const session = await AuthManager.getInstance().getCurrentUser();
+            const fm = new FriendshipManager({} as any);
+            await fm.acceptRequest(session.id, friendId);
+            showToast('Request accepted!', 'success');
+            loadFriends(); // Reload
+        } catch (e: any) {
+            showToast(e.message, 'error');
+        }
+    };
+
+    const handleReject = async (friendId: string) => {
+        try {
+            const { AuthManager } = await import('../../src/core/identity/AuthManager');
+            const { FriendshipManager } = await import('../../src/core/identity/FriendshipManager');
+            const session = await AuthManager.getInstance().getCurrentUser();
+            const fm = new FriendshipManager({} as any);
+            await fm.rejectRequest(session.id, friendId);
+            showToast('Request rejected!', 'success');
+            loadFriends(); // Reload
+        } catch (e: any) {
+            showToast(e.message, 'error');
+        }
     };
 
     const handleLogout = () => {
@@ -101,10 +203,10 @@ export default function ProfileScreen() {
                         <Text style={styles.statLabel}>Hosted</Text>
                     </View>
                     <View style={styles.statBorder} />
-                    <View style={styles.statBox}>
+                    <TouchableOpacity style={styles.statBox} onPress={loadFriends} activeOpacity={0.7}>
                         <Text style={styles.statValue}>{stats.trustedCircleCount}</Text>
-                        <Text style={styles.statLabel}>Friends</Text>
-                    </View>
+                        <Text style={[styles.statLabel, { color: '#3B82F6' }]}>Friends</Text>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Availability Toggle */}
@@ -143,7 +245,7 @@ export default function ProfileScreen() {
                         <Ionicons name="chevron-forward" size={20} color="#64748B" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.actionRow} activeOpacity={0.7}>
+                    <TouchableOpacity style={styles.actionRow} onPress={() => router.push('/(tabs)/ocr-schedule')} activeOpacity={0.7}>
                         <View style={[styles.actionIcon, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
                             <Ionicons name="calendar-outline" size={22} color="#8B5CF6" />
                         </View>
@@ -189,6 +291,71 @@ export default function ProfileScreen() {
                 </View>
 
             </ScrollView>
+
+            {friendsModalVisible && (
+                <View style={StyleSheet.absoluteFillObject}>
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} />
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Friends & Requests</Text>
+                            <TouchableOpacity onPress={() => setFriendsModalVisible(false)}>
+                                <Ionicons name="close" size={28} color={theme.textPrimary} />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ flex: 1 }}>
+                            {pendingRequests.length > 0 && (
+                                <View>
+                                    <Text style={styles.modalSectionTitle}>Pending Requests</Text>
+                                    {pendingRequests.map(r => (
+                                        <View key={r.id} style={styles.friendRow}>
+                                            <View style={styles.friendAvatar}>
+                                                <Text style={{ color: '#fff', fontWeight: 'bold' }}>{r.full_name?.charAt(0)}</Text>
+                                            </View>
+                                            <Text style={styles.friendName}>{r.full_name}</Text>
+                                            <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAccept(r.id)}>
+                                                <Ionicons name="checkmark" size={20} color="#fff" />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(r.id)}>
+                                                <Ionicons name="close" size={20} color="#EF4444" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+
+                            <Text style={styles.modalSectionTitle}>My Friends</Text>
+                            {friends.length === 0 && <Text style={{ marginLeft: 20, color: theme.textSecondary }}>No friends yet.</Text>}
+                            {friends.map(f => (
+                                <View key={f.id} style={styles.friendRow}>
+                                    <View style={styles.friendAvatar}>
+                                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>{f.full_name?.charAt(0)}</Text>
+                                    </View>
+                                    <Text style={styles.friendName}>{f.full_name}</Text>
+                                </View>
+                            ))}
+
+                            <Text style={[styles.modalSectionTitle, { marginTop: 32 }]}>Add More Friends</Text>
+                            <View style={styles.addFriendRow}>
+                                <View style={styles.addFriendInputContainer}>
+                                    <Ionicons name="search" size={20} color="#64748B" />
+                                    <TextInput
+                                        style={styles.addFriendInput}
+                                        placeholder="Username or E-mail"
+                                        placeholderTextColor="#64748B"
+                                        value={newFriendUsername}
+                                        onChangeText={setNewFriendUsername}
+                                        autoCapitalize="none"
+                                    />
+                                </View>
+                                <TouchableOpacity style={styles.sendReqBtn} onPress={handleSendRequest}>
+                                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </ScrollView>
+                    </View>
+                </View>
+            )}
+
         </SafeAreaView>
     );
 }
@@ -235,4 +402,23 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
     actionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.card, paddingVertical: 16, paddingHorizontal: 20, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: theme.cardBorder },
     actionIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
     actionText: { flex: 1, fontSize: 16, color: theme.textPrimary, fontWeight: '600' },
+
+    // Modal Styles
+    modalContent: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.background, height: '80%', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 10 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+    modalTitle: { fontSize: 22, fontWeight: '800', color: theme.textPrimary },
+    modalSectionTitle: { fontSize: 14, fontWeight: '700', color: theme.textSecondary, marginBottom: 16, marginLeft: 8, textTransform: 'uppercase' },
+
+    friendRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.card, padding: 12, borderRadius: 16, marginBottom: 12 },
+    friendAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    friendName: { flex: 1, fontSize: 16, fontWeight: '600', color: theme.textPrimary },
+
+    acceptBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+    rejectBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(239, 68, 68, 0.1)', justifyContent: 'center', alignItems: 'center' },
+
+    addFriendRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 32 },
+    addFriendInputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: theme.card, height: 50, borderRadius: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: theme.cardBorder, marginRight: 12 },
+    addFriendInput: { flex: 1, marginLeft: 8, color: theme.textPrimary, fontSize: 15 },
+    sendReqBtn: { backgroundColor: theme.primary, height: 50, paddingHorizontal: 20, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }
+
 });

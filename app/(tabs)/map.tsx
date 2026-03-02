@@ -83,9 +83,52 @@ export default function MapScreen() {
         setTrendingEvents(mappedTrending);
     };
 
+    const [showHeatmap, setShowHeatmap] = useState(false);
+
+    // Group events by rough location for heatmap
+    const getHeatmapData = () => {
+        const heatmap: any[] = [];
+        // A very basic heatmap clustering simulation by category
+        allEvents.forEach(evt => {
+            const existingNode = heatmap.find(h =>
+                Math.abs(h.latitude - evt.location_lat) < 0.02 &&
+                Math.abs(h.longitude - evt.location_lng) < 0.02 &&
+                h.category === evt.sub_category
+            );
+
+            if (existingNode) {
+                existingNode.weight += 1;
+            } else {
+                heatmap.push({
+                    id: `heat_${evt.id}`,
+                    latitude: evt.location_lat,
+                    longitude: evt.location_lng,
+                    category: evt.sub_category,
+                    weight: 1
+                });
+            }
+        });
+        return heatmap;
+    };
+
+    const heatmapData = getHeatmapData();
+
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.container}>
+                <View style={styles.headerControls}>
+                    <TouchableOpacity
+                        style={[styles.heatmapToggle, showHeatmap && styles.heatmapToggleActive]}
+                        onPress={() => setShowHeatmap(!showHeatmap)}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons name="flame" size={20} color={showHeatmap ? "#FFF" : "#F59E0B"} />
+                        <Text style={[styles.heatmapToggleText, showHeatmap && { color: '#FFF' }]}>
+                            {showHeatmap ? "Heatmap On" : "Show Heatmap"}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
                 <View style={styles.mapContainer}>
                     <MapView
                         style={styles.map}
@@ -102,7 +145,7 @@ export default function MapScreen() {
                     >
                         {/* Event Markers */}
                         {
-                            selectedCoord && (
+                            selectedCoord && !showHeatmap && (
                                 <Marker coordinate={selectedCoord}>
                                     <View style={[styles.markerBadge, { backgroundColor: '#F59E0B', width: 40, height: 40, borderRadius: 20 }]}>
                                         <Ionicons name="location" size={20} color="#FFF" />
@@ -112,7 +155,7 @@ export default function MapScreen() {
                         }
                         {/* Live Markers from DB */}
                         {
-                            !selectedCoord && allEvents.map((evt: any) => (
+                            !selectedCoord && !showHeatmap && allEvents.map((evt: any) => (
                                 <Marker
                                     key={evt.id}
                                     coordinate={{ latitude: evt.location_lat, longitude: evt.location_lng }}
@@ -121,6 +164,30 @@ export default function MapScreen() {
                                 >
                                     <View style={[styles.markerBadge, { backgroundColor: '#3B82F6' }]}>
                                         <Ionicons name="location" size={16} color="#FFF" />
+                                    </View>
+                                </Marker>
+                            ))
+                        }
+
+                        {/* Heatmap Nodes */}
+                        {
+                            showHeatmap && heatmapData.map((node: any) => (
+                                <Marker
+                                    key={node.id}
+                                    coordinate={{ latitude: node.latitude, longitude: node.longitude }}
+                                    title={`${node.category} Hotspot`}
+                                    description={`${node.weight} events in this area`}
+                                >
+                                    <View style={[
+                                        styles.heatmapNode,
+                                        {
+                                            width: Math.min(100, 30 + (node.weight * 15)),
+                                            height: Math.min(100, 30 + (node.weight * 15)),
+                                            borderRadius: Math.min(100, 30 + (node.weight * 15)) / 2,
+                                            backgroundColor: `rgba(239, 68, 68, ${Math.min(0.8, 0.3 + (node.weight * 0.1))})`
+                                        }
+                                    ]}>
+                                        <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>{node.category}</Text>
                                     </View>
                                 </Marker>
                             ))
@@ -180,6 +247,39 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     mapContainer: { flex: 1, overflow: 'hidden' },
     map: { width: '100%', height: '100%' },
+
+    headerControls: {
+        position: 'absolute',
+        top: 60,
+        right: 20,
+        zIndex: 10,
+    },
+    heatmapToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1E293B',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#334155',
+        shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 5,
+    },
+    heatmapToggleActive: {
+        backgroundColor: '#F59E0B',
+        borderColor: '#F59E0B',
+    },
+    heatmapToggleText: {
+        color: '#94A3B8',
+        fontWeight: 'bold',
+        marginLeft: 8,
+    },
+    heatmapNode: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
 
     markerBadge: {
         width: 32,

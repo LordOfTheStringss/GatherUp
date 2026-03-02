@@ -35,7 +35,7 @@ const SHUFFLED_INTERESTS = [...ALL_INTERESTS].sort(() => 0.5 - Math.random());
 // DI stub
 const userController = new UserController(
     UserManager.getInstance(),
-    new FriendshipManager({} as any, {} as any),
+    new FriendshipManager({} as any),
     new GamificationManager()
 );
 
