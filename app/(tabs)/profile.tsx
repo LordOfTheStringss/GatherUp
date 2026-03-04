@@ -235,13 +235,13 @@ export default function ProfileScreen() {
                 <View style={styles.actionsContainer}>
                     <PanicButton />
 
-                    <Text style={styles.sectionTitle}>Account Setup</Text>
+                    <Text style={styles.sectionTitle}>Event Settings</Text>
 
-                    <TouchableOpacity style={styles.actionRow} onPress={() => router.push('/(tabs)/edit-profile')} activeOpacity={0.7}>
-                        <View style={[styles.actionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
-                            <Ionicons name="person-outline" size={22} color="#3B82F6" />
+                    <TouchableOpacity style={styles.actionRow} onPress={() => router.push('/(tabs)/edit-location')} activeOpacity={0.7}>
+                        <View style={[styles.actionIcon, { backgroundColor: 'rgba(236, 72, 153, 0.1)' }]}>
+                            <Ionicons name="location-outline" size={22} color="#EC4899" />
                         </View>
-                        <Text style={styles.actionText}>Edit Profile</Text>
+                        <Text style={styles.actionText}>Change Event Location</Text>
                         <Ionicons name="chevron-forward" size={20} color="#64748B" />
                     </TouchableOpacity>
 
@@ -258,6 +258,16 @@ export default function ProfileScreen() {
                             <Ionicons name="heart-outline" size={22} color="#10B981" />
                         </View>
                         <Text style={styles.actionText}>Manage Interests</Text>
+                        <Ionicons name="chevron-forward" size={20} color="#64748B" />
+                    </TouchableOpacity>
+
+                    <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Account Setup</Text>
+
+                    <TouchableOpacity style={styles.actionRow} onPress={() => router.push('/(tabs)/edit-profile')} activeOpacity={0.7}>
+                        <View style={[styles.actionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+                            <Ionicons name="person-outline" size={22} color="#3B82F6" />
+                        </View>
+                        <Text style={styles.actionText}>Edit Profile</Text>
                         <Ionicons name="chevron-forward" size={20} color="#64748B" />
                     </TouchableOpacity>
 

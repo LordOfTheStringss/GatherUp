@@ -67,21 +67,20 @@ export class EventManager {
         const { data: user } = await this.supabaseClient.client.from('users').select('full_name').eq('id', organizerId).single();
         if (!user) return;
 
-        // 2. Fetch friends
-        const { data: friendships } = await this.supabaseClient.client
-            .from('friendships')
-            .select('user_id, friend_id')
-            .eq('status', 'accepted')
-            .or(`user_id.eq.${organizerId},friend_id.eq.${organizerId}`);
+        // 2. Fetch friends (mutual follows)
+        const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', organizerId);
+        const { data: whoIFollow } = await this.supabaseClient.client.from('friendships').select('friend_id').eq('user_id', organizerId);
 
-        if (!friendships || friendships.length === 0) return;
+        const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
+        const friendsIds = (whoFollowsMe || []).map((f: any) => f.user_id).filter((id: string) => myFollowingIds.includes(id));
+
+        if (!friendsIds || friendsIds.length === 0) return;
 
         // 3. Dispatch notifications
         const { NotificationService } = await import('../../infra/NotificationService');
         const notifService = NotificationService.getInstance();
 
-        for (const f of friendships) {
-            const targetId = f.user_id === organizerId ? f.friend_id : f.user_id;
+        for (const targetId of friendsIds) {
             await notifService.sendFriendEventNotification(targetId, eventTitle, user.full_name);
         }
     }
@@ -97,19 +96,14 @@ export class EventManager {
         }
 
         if (filter.friendsOnly && filter.userId) {
-            // Fetch accepted friends
-            const { data: friendships } = await this.supabaseClient.client
-                .from('friendships')
-                .select('friend_id, user_id')
-                .eq('status', 'accepted')
-                .or(`user_id.eq.${filter.userId},friend_id.eq.${filter.userId}`);
+            // Fetch accepted friends (mutual follows)
+            const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', filter.userId);
+            const { data: whoIFollow } = await this.supabaseClient.client.from('friendships').select('friend_id').eq('user_id', filter.userId);
 
-            let allowedIds = [filter.userId]; // Include own events potentially, or just friends
-            if (friendships) {
-                friendships.forEach((f: any) => {
-                    allowedIds.push(f.user_id === filter.userId ? f.friend_id : f.user_id);
-                });
-            }
+            const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
+            const friendsIds = (whoFollowsMe || []).map((f: any) => f.user_id).filter((id: string) => myFollowingIds.includes(id));
+
+            let allowedIds = [filter.userId, ...friendsIds];
             query = query.in('organizer_id', allowedIds);
         }
 

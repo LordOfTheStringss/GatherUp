@@ -134,15 +134,6 @@ export default function EditProfileScreen() {
                         textAlignVertical="top"
                     />
 
-                    <Text style={styles.label}>BASE LOCATION / NEIGHBORHOOD</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={baseLoc}
-                        onChangeText={setBaseLoc}
-                        placeholderTextColor="#64748B"
-                        placeholder="e.g., Kadıköy, Beşiktaş"
-                    />
-
                     <Text style={styles.label}>EMAIL ADDRESS (READ ONLY)</Text>
                     <TextInput
                         style={[styles.input, styles.disabledInput]}

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Platform, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -34,15 +33,26 @@ export default function HomeScreen() {
         try {
             const user = await AuthManager.getInstance().getCurrentUser();
 
-            // 1. Fetch Location for Nearby
+            // 1. Fetch Location for Nearby from user's saved base location
             let loc: { latitude: number, longitude: number } | undefined = undefined;
-            if (activeTab === 'nearby') {
-                const { status } = await Location.requestForegroundPermissionsAsync();
-                if (status === 'granted') {
-                    const location = await Location.getCurrentPositionAsync({});
-                    loc = { latitude: location.coords.latitude, longitude: location.coords.longitude };
-                } else {
-                    showToast('Location permission is required for nearby events.', 'error');
+            if (activeTab === 'nearby' && user) {
+                try {
+                    const profileRes = await new (require('../../src/controllers/UserController').UserController)(
+                        require('../../src/core/identity/UserManager').UserManager.getInstance(),
+                        null as any, null as any
+                    ).getMyProfile(user.id);
+
+                    if (profileRes.data?.baseLocation) {
+                        const { getLocationByLabel } = require('../../src/data/locations');
+                        const mapped = getLocationByLabel(profileRes.data.baseLocation);
+                        if (mapped) {
+                            loc = { latitude: mapped.latitude, longitude: mapped.longitude };
+                        }
+                    }
+
+                    if (!loc) showToast('Please set your location in Profile > Event Settings', 'error');
+                } catch (e) {
+                    console.error("Failed to fetch location mapping:", e);
                 }
             }
 
@@ -153,8 +163,8 @@ export default function HomeScreen() {
                         <Text style={styles.eventCategory}>{item.category}</Text>
                     </View>
                     <View style={styles.capacityBadge}>
-                        <Ionicons name="flame" size={14} color="#EF4444" style={{ marginRight: 4 }} />
-                        <Text style={styles.eventCapacity}>{item.capacity} spots</Text>
+                        <Ionicons name="people" size={16} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                        <Text style={styles.eventCapacity}>{item.capacity} capacity</Text>
                     </View>
                 </View>
                 <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
@@ -180,8 +190,7 @@ export default function HomeScreen() {
                 <View style={styles.header}>
                     <View style={styles.headerLeft}>
                         <View style={styles.headerTextContainer}>
-                            <Text style={styles.greeting}>Gather<Text style={{ color: '#3B82F6' }}>Up</Text> ✨</Text>
-                            <Text style={styles.subGreeting}>Finding your next social spark.</Text>
+                            <Text style={styles.greeting}>Gather<Text style={{ color: '#3B82F6' }}>Up</Text></Text>
                         </View>
                     </View>
                     <TouchableOpacity

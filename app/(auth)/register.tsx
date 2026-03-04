@@ -92,14 +92,28 @@ export default function RegisterScreen() {
                     autoCapitalize="none"
                 />
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="Neighborhood / District (e.g., Kadıköy, Beşiktaş)"
-                    placeholderTextColor="#7f8c8d"
-                    value={baseLocation}
-                    onChangeText={setBaseLocation}
-                    autoCapitalize="words"
-                />
+                <Text style={{ color: '#F8FAFC', marginBottom: 8, marginLeft: 4, fontWeight: '600' }}>Base Location (Ankara)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                    {require('../../src/data/locations').ANKARA_NEIGHBORHOODS.map((loc: any) => (
+                        <TouchableOpacity
+                            key={loc.id}
+                            style={{
+                                backgroundColor: baseLocation === loc.label ? 'rgba(59, 130, 246, 0.2)' : '#1C2733',
+                                paddingHorizontal: 16,
+                                paddingVertical: 10,
+                                borderRadius: 20,
+                                marginRight: 8,
+                                borderWidth: 1,
+                                borderColor: baseLocation === loc.label ? '#3B82F6' : '#2B3847'
+                            }}
+                            onPress={() => setBaseLocation(loc.label)}
+                        >
+                            <Text style={{ color: baseLocation === loc.label ? '#3B82F6' : '#94A3B8', fontWeight: '500' }}>
+                                {loc.label.split(',')[0]}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
 
                 <TextInput
                     style={styles.input}
