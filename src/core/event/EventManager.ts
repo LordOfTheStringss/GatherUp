@@ -53,7 +53,37 @@ export class EventManager {
             console.error('Create event error:', error);
             throw new Error(error.message);
         }
+
+        // Notify friends asynchronously
+        if (!eventData.is_private) {
+            this.notifyFriendsAboutNewEvent(organizerId, eventData.title).catch(e => console.error("Failed to notify friends:", e));
+        }
+
         return data;
+    }
+
+    private async notifyFriendsAboutNewEvent(organizerId: string, eventTitle: string) {
+        // 1. Fetch organizer name
+        const { data: user } = await this.supabaseClient.client.from('users').select('full_name').eq('id', organizerId).single();
+        if (!user) return;
+
+        // 2. Fetch friends
+        const { data: friendships } = await this.supabaseClient.client
+            .from('friendships')
+            .select('user_id, friend_id')
+            .eq('status', 'accepted')
+            .or(`user_id.eq.${organizerId},friend_id.eq.${organizerId}`);
+
+        if (!friendships || friendships.length === 0) return;
+
+        // 3. Dispatch notifications
+        const { NotificationService } = await import('../../infra/NotificationService');
+        const notifService = NotificationService.getInstance();
+
+        for (const f of friendships) {
+            const targetId = f.user_id === organizerId ? f.friend_id : f.user_id;
+            await notifService.sendFriendEventNotification(targetId, eventTitle, user.full_name);
+        }
     }
 
     public async getEvents(filter: EventFilterDTO): Promise<any[]> {
@@ -64,6 +94,23 @@ export class EventManager {
         }
         if (filter.organizerId) {
             query = query.eq('organizer_id', filter.organizerId);
+        }
+
+        if (filter.friendsOnly && filter.userId) {
+            // Fetch accepted friends
+            const { data: friendships } = await this.supabaseClient.client
+                .from('friendships')
+                .select('friend_id, user_id')
+                .eq('status', 'accepted')
+                .or(`user_id.eq.${filter.userId},friend_id.eq.${filter.userId}`);
+
+            let allowedIds = [filter.userId]; // Include own events potentially, or just friends
+            if (friendships) {
+                friendships.forEach((f: any) => {
+                    allowedIds.push(f.user_id === filter.userId ? f.friend_id : f.user_id);
+                });
+            }
+            query = query.in('organizer_id', allowedIds);
         }
 
         const { data, error } = await query;
@@ -77,7 +124,7 @@ export class EventManager {
 
         // Apply local geographic filtering if requested
         if (filter.location && filter.radius) {
-            results = results.filter(event => {
+            results = results.filter((event: any) => {
                 if (!event.location_lat || !event.location_lng) return false;
                 const dist = this.calculateDistance(
                     filter.location!.latitude,

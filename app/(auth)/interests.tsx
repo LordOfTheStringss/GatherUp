@@ -207,7 +207,7 @@ export default function InterestsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#020617' },
+    container: { flex: 1, backgroundColor: '#0B1120' },
     header: { paddingTop: 60, paddingHorizontal: 20, alignItems: 'center' },
     title: { fontSize: 26, fontWeight: '800', color: '#F8FAFC', letterSpacing: 0.5 },
     subtitle: { fontSize: 16, color: '#94A3B8', marginTop: 8 },
@@ -220,12 +220,12 @@ const styles = StyleSheet.create({
     card: {
         width: SCREEN_WIDTH - 40,
         height: SCREEN_WIDTH, // Make it squareish
-        backgroundColor: '#0F172A',
+        backgroundColor: '#15202B',
         borderRadius: 24,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#1E293B',
+        borderColor: '#1C2733',
         elevation: 10,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 10 },
@@ -247,12 +247,12 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
     },
-    nopeButton: { backgroundColor: '#0F172A', borderWidth: 2, borderColor: '#EF4444', shadowColor: '#EF4444' },
-    likeButton: { backgroundColor: '#0F172A', borderWidth: 2, borderColor: '#10B981', shadowColor: '#10B981' },
+    nopeButton: { backgroundColor: '#15202B', borderWidth: 2, borderColor: '#EF4444', shadowColor: '#EF4444' },
+    likeButton: { backgroundColor: '#15202B', borderWidth: 2, borderColor: '#10B981', shadowColor: '#10B981' },
 
     content: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
     chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginVertical: 30, justifyContent: 'center' },
-    chip: { backgroundColor: '#1E293B', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#334155' },
+    chip: { backgroundColor: '#1C2733', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#334155' },
     chipText: { color: '#E2E8F0', fontWeight: 'bold' },
 
     button: {

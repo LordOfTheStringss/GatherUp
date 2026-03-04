@@ -193,13 +193,13 @@ export default function PlanTimeScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0F172A' },
+    container: { flex: 1, backgroundColor: '#15202B' },
     content: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
     title: { fontSize: 28, fontWeight: 'bold', color: '#FFF', marginBottom: 8 },
     subtitle: { fontSize: 16, color: '#94A3B8', marginBottom: 32 },
 
     typeButton: {
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         flexDirection: 'row',
         padding: 20,
         borderRadius: 16,
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
 
     uploadBox: {
         height: 200,
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         borderRadius: 16,
         borderWidth: 2,
         borderColor: '#334155',

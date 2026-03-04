@@ -51,8 +51,11 @@ export default function HomeScreen() {
             );
 
             let myRes: any = { data: [] };
+            let friendsRes: any = { data: [] };
+
             if (user) {
                 myRes = await eventController.getEvents({ organizerId: user.id });
+                friendsRes = await eventController.getEvents({ category: 'All', friendsOnly: true, userId: user.id });
             }
 
             const mapEvents = (events: any[]) => events.map((e: any) => ({
@@ -67,16 +70,15 @@ export default function HomeScreen() {
             }));
 
             if (nearbyRes.data) {
-                // Filter out my own events from nearby/friends feed
+                // Filter out my own events from nearby feed
                 const filteredOthers = user ? nearbyRes.data.filter((e: any) => e.organizer_id !== user.id) : nearbyRes.data;
                 const mappedOthers = mapEvents(filteredOthers);
-
-                if (activeTab === 'nearby') {
-                    setNearbyEvents(mappedOthers);
-                } else {
-                    setFriendsEvents(mappedOthers); // For now, friends feed is just all events
-                    setNearbyEvents(mappedOthers);
-                }
+                setNearbyEvents(mappedOthers);
+            }
+            if (friendsRes.data) {
+                // Exclude the user's own events from the friends feed to keep it purely "friends' events"
+                const filteredFriends = user ? friendsRes.data.filter((e: any) => e.organizer_id !== user.id) : friendsRes.data;
+                setFriendsEvents(mapEvents(filteredFriends));
             }
             if (myRes.data) {
                 setMyEvents(mapEvents(myRes.data));
@@ -132,9 +134,9 @@ export default function HomeScreen() {
                         <View style={[styles.categoryBadge, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
                             <Text style={[styles.eventCategory, { color: '#3B82F6' }]}>{item.category}</Text>
                         </View>
-                        <TouchableOpacity style={styles.joinButton}>
-                            <Text style={styles.joinButtonText}>Join</Text>
-                        </TouchableOpacity>
+                        <View style={styles.joinButton}>
+                            <Text style={styles.joinButtonText}>View & Join</Text>
+                        </View>
                     </View>
                 </TouchableOpacity>
             );
@@ -178,7 +180,7 @@ export default function HomeScreen() {
                 <View style={styles.header}>
                     <View style={styles.headerLeft}>
                         <View style={styles.headerTextContainer}>
-                            <Text style={styles.greeting}>Gather Up ✨</Text>
+                            <Text style={styles.greeting}>Gather<Text style={{ color: '#3B82F6' }}>Up</Text> ✨</Text>
                             <Text style={styles.subGreeting}>Finding your next social spark.</Text>
                         </View>
                     </View>

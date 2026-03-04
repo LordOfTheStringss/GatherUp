@@ -233,9 +233,9 @@ export default function ProfileScreen() {
 
                 {/* Actions List */}
                 <View style={styles.actionsContainer}>
-                    <Text style={styles.sectionTitle}>Account Setup</Text>
-
                     <PanicButton />
+
+                    <Text style={styles.sectionTitle}>Account Setup</Text>
 
                     <TouchableOpacity style={styles.actionRow} onPress={() => router.push('/(tabs)/edit-profile')} activeOpacity={0.7}>
                         <View style={[styles.actionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>

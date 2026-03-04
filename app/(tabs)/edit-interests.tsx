@@ -83,7 +83,8 @@ export default function EditInterestsScreen() {
             await userController.updateProfile(undefined, { interests: Array.from(selectedInterests) });
             showToast('Interests updated successfully!', 'success');
             setHasChanges(false);
-            router.back();
+            // Explicitly route to profile instead of router.back() which might pop to index
+            router.push('/(tabs)/profile');
         } catch (error) {
             console.error("Save error:", error);
             showToast('Failed to save interests.', 'error');

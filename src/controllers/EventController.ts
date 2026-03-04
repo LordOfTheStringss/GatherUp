@@ -22,6 +22,8 @@ export interface EventFilterDTO {
     startTime?: Date;
     category?: string;
     organizerId?: string;
+    friendsOnly?: boolean;
+    userId?: string; // Required if friendsOnly is true
 }
 
 export interface EventDetailDTO {

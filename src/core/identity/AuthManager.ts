@@ -23,7 +23,7 @@ export class AuthManager {
         return AuthManager.instance;
     }
 
-    public async register(data: { email: string, password: string, fullName: string, username: string, age: string }): Promise<boolean> {
+    public async register(data: { email: string, password: string, fullName: string, username: string, age: string, baseLocation?: string }): Promise<boolean> {
         if (!this.validateDomain(data.email)) {
             throw new InvalidDomainException();
         }
@@ -35,7 +35,8 @@ export class AuthManager {
                 data: {
                     full_name: data.fullName,
                     username: data.username,
-                    age: data.age
+                    age: data.age,
+                    base_location: data.baseLocation || ''
                 }
             }
         });

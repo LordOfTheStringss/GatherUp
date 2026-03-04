@@ -11,11 +11,12 @@ export default function RegisterScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [baseLocation, setBaseLocation] = useState('');
     const { register } = useAuthStore();
     const { showToast } = useUIStore();
 
     const handleRegister = async () => {
-        if (!fullName || !username || !age || !email || !password || !confirmPassword) {
+        if (!fullName || !username || !age || !email || !password || !confirmPassword || !baseLocation) {
             showToast('Please fill in all fields.', 'error');
             return;
         }
@@ -26,7 +27,7 @@ export default function RegisterScreen() {
         }
 
         try {
-            const success = await register({ fullName, username, age, email, password });
+            const success = await register({ fullName, username, age, email, password, baseLocation });
             if (success) {
                 showToast('Registration successful! Check your email to verify.', 'success');
                 // Navigating to interest selection or login
@@ -93,6 +94,15 @@ export default function RegisterScreen() {
 
                 <TextInput
                     style={styles.input}
+                    placeholder="Neighborhood / District (e.g., Kadıköy, Beşiktaş)"
+                    placeholderTextColor="#7f8c8d"
+                    value={baseLocation}
+                    onChangeText={setBaseLocation}
+                    autoCapitalize="words"
+                />
+
+                <TextInput
+                    style={styles.input}
                     placeholder="Password"
                     placeholderTextColor="#7f8c8d"
                     value={password}
@@ -127,7 +137,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0F172A',
+        backgroundColor: '#15202B',
     },
     scrollContent: {
         flexGrow: 1,
@@ -157,7 +167,7 @@ const styles = StyleSheet.create({
         marginBottom: 32,
     },
     input: {
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         color: '#FFFFFF',
         height: 52,
         borderRadius: 8,

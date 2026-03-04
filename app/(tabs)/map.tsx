@@ -243,7 +243,7 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: '#0F172A' },
+    safeArea: { flex: 1, backgroundColor: '#15202B' },
     container: { flex: 1 },
     mapContainer: { flex: 1, overflow: 'hidden' },
     map: { width: '100%', height: '100%' },
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     heatmapToggle: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 20,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
         bottom: 40,
         left: 20,
         right: 20,
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         padding: 20,
         borderRadius: 16,
         borderWidth: 1,
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
         bottom: 20,
         left: 20,
         right: 20,
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         padding: 24,
         borderRadius: 24,
         borderWidth: 1,

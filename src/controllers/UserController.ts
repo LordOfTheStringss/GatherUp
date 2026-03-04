@@ -9,6 +9,7 @@ export interface UpdateProfileDTO {
     bio?: string;
     interests?: string[];
     profilePhoto?: string;
+    baseLocation?: string;
 }
 
 export interface PublicProfileDTO {
@@ -17,6 +18,7 @@ export interface PublicProfileDTO {
     trustScore: number;
     interestTags: string[];
     bio?: string;
+    baseLocation?: string;
 }
 
 export interface UserDTO {
@@ -78,10 +80,12 @@ export class UserController {
                     bio: user.privacy_settings?.bio || '',
                     xp: user.reputation_score || 0,
                     badges: user.badges || [],
+                    interests: user.interest_tags || [],
+                    baseLocation: user.base_location || '',
                     stats: {
                         eventsAttended: eventsAttended || 0,
                         eventsHosted: eventsHosted || 0,
-                        trustedCircleCount: friends.length
+                        trustedCircleCount: friends ? friends.length : 0
                     }
                 }
             };
@@ -108,7 +112,8 @@ export class UserController {
                 name: data.name,
                 bio: data.bio,
                 interests: data.interests,
-                profilePhoto: data.profilePhoto
+                profilePhoto: data.profilePhoto,
+                baseLocation: data.baseLocation
             });
             return { status: 200, message: "Profile Updated" };
         } catch (error: any) {

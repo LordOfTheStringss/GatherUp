@@ -13,6 +13,7 @@ export default function EditProfileScreen() {
     // Local State
     const [name, setName] = useState('');
     const [bio, setBio] = useState('');
+    const [baseLoc, setBaseLoc] = useState('');
     const [profilePic, setProfilePic] = useState<string | null>(null);
 
     React.useEffect(() => {
@@ -25,6 +26,7 @@ export default function EditProfileScreen() {
                 if (res.status === 200 && res.data) {
                     setName(res.data.fullName || '');
                     setBio(res.data.bio || '');
+                    setBaseLoc(res.data.baseLocation || '');
                 }
             } catch (e) {
                 console.error("Failed to load profile:", e);
@@ -71,7 +73,8 @@ export default function EditProfileScreen() {
         try {
             await userController.updateProfile(undefined, {
                 name: name,
-                bio: bio
+                bio: bio,
+                baseLocation: baseLoc
             });
             setGlobalLoading(false);
             showToast('Profile details saved.', 'success');
@@ -131,6 +134,15 @@ export default function EditProfileScreen() {
                         textAlignVertical="top"
                     />
 
+                    <Text style={styles.label}>BASE LOCATION / NEIGHBORHOOD</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={baseLoc}
+                        onChangeText={setBaseLoc}
+                        placeholderTextColor="#64748B"
+                        placeholder="e.g., Kadıköy, Beşiktaş"
+                    />
+
                     <Text style={styles.label}>EMAIL ADDRESS (READ ONLY)</Text>
                     <TextInput
                         style={[styles.input, styles.disabledInput]}
@@ -149,7 +161,7 @@ export default function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: '#020617' },
+    safeArea: { flex: 1, backgroundColor: '#0B1120' },
 
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16 },
     backBtn: { minHeight: 44, justifyContent: 'center' },
@@ -162,14 +174,14 @@ const styles = StyleSheet.create({
     profileImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 3, borderColor: '#3B82F6' },
     placeholderImage: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#3B82F6', justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: 'rgba(59, 130, 246, 0.5)' },
     placeholderText: { fontSize: 48, fontWeight: '800', color: '#FFF' },
-    editIconBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#10B981', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#020617' },
+    editIconBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#10B981', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#0B1120' },
     imageHelpText: { color: '#94A3B8', fontSize: 13, marginTop: 16, fontWeight: '500' },
 
     formSection: { marginBottom: 32 },
     label: { color: '#64748B', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, marginLeft: 4 },
-    input: { backgroundColor: '#0F172A', color: '#F8FAFC', height: 56, borderRadius: 16, paddingHorizontal: 16, marginBottom: 24, borderWidth: 1, borderColor: '#1E293B', fontSize: 16 },
+    input: { backgroundColor: '#15202B', color: '#F8FAFC', height: 56, borderRadius: 16, paddingHorizontal: 16, marginBottom: 24, borderWidth: 1, borderColor: '#1C2733', fontSize: 16 },
     textArea: { height: 120, paddingTop: 16 },
-    disabledInput: { backgroundColor: '#020617', color: '#64748B', borderColor: '#0F172A' },
+    disabledInput: { backgroundColor: '#0B1120', color: '#64748B', borderColor: '#15202B' },
 
     saveBtn: { backgroundColor: '#3B82F6', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
     saveBtnText: { color: '#FFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
