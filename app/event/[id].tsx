@@ -60,7 +60,7 @@ export default function EventDetailScreen() {
                     .from('chat_messages')
                     .select('id, content, sender_id, created_at, users(full_name)')
                     .eq('event_id', id)
-                    .order('created_at', { ascending: true });
+                    .order('created_at', { ascending: false });
 
                 if (!chatErr && chatData) {
                     setMessages(chatData);
@@ -73,7 +73,23 @@ export default function EventDetailScreen() {
                         'postgres_changes',
                         { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `event_id=eq.${id}` },
                         (payload: any) => {
-                            setMessages((prev) => [...prev, payload.new]);
+                            const newMsg = payload.new;
+                            // Enrich with user name from participants list
+                            setParticipants((currentParticipants) => {
+                                const sender = currentParticipants.find(p => p.id === newMsg.sender_id);
+                                if (sender) {
+                                    newMsg.users = { full_name: sender.full_name };
+                                }
+                                return currentParticipants;
+                            });
+                            setMessages((prev) => {
+                                // Deduplicate by ID or content/sender if temp
+                                const exists = prev.some(m => m.id === newMsg.id || (m.content === newMsg.content && m.sender_id === newMsg.sender_id && m.id.startsWith('temp-')));
+                                if (exists) {
+                                    return prev.map(m => (m.content === newMsg.content && m.sender_id === newMsg.sender_id && m.id.startsWith('temp-')) ? newMsg : m);
+                                }
+                                return [newMsg, ...prev];
+                            });
                         }
                     )
                     .subscribe();
@@ -111,6 +127,14 @@ export default function EventDetailScreen() {
                         setParticipants(prev => [...prev, me]);
                     }
                 }
+                // Refetch chat history to be sure we are synced
+                const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+                const { data: freshChat } = await SupabaseClient.getInstance().client
+                    .from('chat_messages')
+                    .select('id, content, sender_id, created_at, users(full_name)')
+                    .eq('event_id', id)
+                    .order('created_at', { ascending: false });
+                if (freshChat) setMessages(freshChat);
             } else {
                 showToast(res.message || "Could not join", "error");
             }
@@ -137,7 +161,17 @@ export default function EventDetailScreen() {
         if (!inputText.trim() || !currentUserId) return;
 
         const messageContent = inputText.trim();
-        setInputText(''); // Optimistic UI clear
+        setInputText(''); // Clear input
+
+        // Optimistic Update
+        const optimisticMsg = {
+            id: 'temp-' + Date.now(),
+            content: messageContent,
+            sender_id: currentUserId,
+            created_at: new Date().toISOString(),
+            users: { full_name: 'You' }
+        };
+        setMessages(prev => [optimisticMsg, ...prev]);
 
         try {
             const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
@@ -228,6 +262,7 @@ export default function EventDetailScreen() {
                     <>
                         <View style={styles.chatContainer}>
                             <FlatList
+                                inverted
                                 data={messages}
                                 keyExtractor={(item, index) => item.id || `msg-${index}`}
                                 renderItem={renderMessage}
