@@ -24,6 +24,7 @@ export interface EventFilterDTO {
     organizerId?: string;
     friendsOnly?: boolean;
     userId?: string; // Required if friendsOnly is true
+    includeExpired?: boolean;
 }
 
 export interface EventDetailDTO {

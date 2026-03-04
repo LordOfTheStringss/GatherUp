@@ -86,7 +86,13 @@ export class EventManager {
     }
 
     public async getEvents(filter: EventFilterDTO): Promise<any[]> {
-        let query = this.supabaseClient.client.from('events').select('*, users!events_organizer_id_fkey(full_name)');
+        // Default: Only fetch events that have not yet ended
+        let query = this.supabaseClient.client.from('events')
+            .select('*, users!events_organizer_id_fkey(full_name)');
+
+        if (!filter.includeExpired) {
+            query = query.gte('end_time', new Date().toISOString());
+        }
 
         if (filter.category && filter.category !== 'All') {
             query = query.eq('sub_category', filter.category);

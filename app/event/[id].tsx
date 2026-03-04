@@ -2,8 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { ChatRoom } from '../../src/core/event/ChatRoom';
-import { Message } from '../../src/core/event/Message';
 import { useUIStore } from '../../src/store/uiStore';
 
 export default function EventDetailScreen() {
@@ -11,8 +9,7 @@ export default function EventDetailScreen() {
     const { showToast } = useUIStore();
 
     const [inputText, setInputText] = useState('');
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
+    const [messages, setMessages] = useState<any[]>([]);
     const [showBadgePopup, setShowBadgePopup] = useState(false);
 
     const [currentUserId, setCurrentUserId] = useState<string>('');
@@ -21,6 +18,8 @@ export default function EventDetailScreen() {
     const [participants, setParticipants] = useState<any[]>([]);
 
     useEffect(() => {
+        let channel: any;
+
         const fetchEventData = async () => {
             try {
                 // Auth
@@ -28,9 +27,11 @@ export default function EventDetailScreen() {
                 const session = await AuthManager.getInstance().getCurrentUser();
                 if (session) setCurrentUserId(session.id);
 
-                // Fetch event details to check if host
                 const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
-                const { data: evData } = await SupabaseClient.getInstance().client
+                const supabase = SupabaseClient.getInstance().client;
+
+                // Fetch event details to check if host
+                const { data: evData } = await supabase
                     .from('events')
                     .select('organizer_id')
                     .eq('id', id)
@@ -54,18 +55,39 @@ export default function EventDetailScreen() {
                     }
                 }
 
-                // Create mock chatroom
-                const room = new ChatRoom(`room-${id}`);
-                const mockHist: Message[] = [];
-                room.messages = mockHist; // Internal mutation for UI test
-                setChatRoom(room);
-                setMessages([...mockHist]);
+                // Fetch Chat History
+                const { data: chatData, error: chatErr } = await supabase
+                    .from('chat_messages')
+                    .select('id, content, sender_id, created_at, users(full_name)')
+                    .eq('event_id', id)
+                    .order('created_at', { ascending: true });
+
+                if (!chatErr && chatData) {
+                    setMessages(chatData);
+                }
+
+                // Subscribe to Realtime Chat
+                channel = supabase
+                    .channel(`event-chat-${id}`)
+                    .on(
+                        'postgres_changes',
+                        { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `event_id=eq.${id}` },
+                        (payload: any) => {
+                            setMessages((prev) => [...prev, payload.new]);
+                        }
+                    )
+                    .subscribe();
+
             } catch (error) {
                 console.error("Failed to load event data", error);
             }
         };
 
         fetchEventData();
+
+        return () => {
+            if (channel) channel.unsubscribe();
+        };
     }, [id]);
 
     const handleJoinEvent = async () => {
@@ -111,14 +133,29 @@ export default function EventDetailScreen() {
         }
     };
 
-    const sendMessage = () => {
-        if (!inputText.trim() || !chatRoom || !currentUserId) return;
+    const sendMessage = async () => {
+        if (!inputText.trim() || !currentUserId) return;
 
-        // Create new message
-        const newMsg = new Message(`msg-${Date.now()}`, chatRoom.roomId, currentUserId, inputText);
+        const messageContent = inputText.trim();
+        setInputText(''); // Optimistic UI clear
 
-        setMessages(prev => [...prev, newMsg]);
-        setInputText('');
+        try {
+            const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+            const { error } = await SupabaseClient.getInstance().client
+                .from('chat_messages')
+                .insert({
+                    event_id: id,
+                    sender_id: currentUserId,
+                    content: messageContent
+                });
+
+            if (error) {
+                console.error("Failed to send message:", error);
+                showToast("Failed to send message", "error");
+            }
+        } catch (err) {
+            console.error("Send error", err);
+        }
     };
 
     const handleEndEvent = () => {
@@ -133,11 +170,12 @@ export default function EventDetailScreen() {
         }, 1500);
     };
 
-    const renderMessage = ({ item }: { item: Message }) => {
-        const isMe = item.senderId === currentUserId;
+    const renderMessage = ({ item }: { item: any }) => {
+        const isMe = item.sender_id === currentUserId;
+        const senderName = isMe ? 'You' : (item.users?.full_name?.split(' ')[0] || item.sender_id?.substring(0, 5));
         return (
             <View style={[styles.messageBubble, isMe ? styles.messageSent : styles.messageRecv]}>
-                {!isMe && <Text style={styles.senderId}>{item.senderId}</Text>}
+                {!isMe && <Text style={styles.senderId}>{senderName}</Text>}
                 <Text style={[styles.messageText, isMe && { color: '#FFF' }]}>{item.content}</Text>
             </View>
         );
