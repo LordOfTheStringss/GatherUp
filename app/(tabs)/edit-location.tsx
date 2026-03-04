@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { UserController } from '../../src/controllers/UserController';
 import { AuthManager } from '../../src/core/identity/AuthManager';
 import { FriendshipManager } from '../../src/core/identity/FriendshipManager';
@@ -26,6 +26,7 @@ export default function EditLocationScreen() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [currentLocation, setCurrentLocation] = useState<string>('');
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         loadCurrentLocation();
@@ -64,6 +65,10 @@ export default function EditLocationScreen() {
         }
     };
 
+    const filteredLocations = ANKARA_NEIGHBORHOODS.filter(loc =>
+        loc.label.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     if (loading) {
         return (
             <SafeAreaView style={styles.safeArea}>
@@ -89,8 +94,25 @@ export default function EditLocationScreen() {
                     Choose your primary neighborhood. This helps us find events and people near you!
                 </Text>
 
+                <View style={styles.searchContainer}>
+                    <Ionicons name="search" size={20} color={theme.textSecondary} style={styles.searchIcon} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Search neighborhood..."
+                        placeholderTextColor={theme.textSecondary}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        autoCapitalize="none"
+                    />
+                    {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')}>
+                            <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+
                 <FlatList
-                    data={ANKARA_NEIGHBORHOODS}
+                    data={filteredLocations}
                     keyExtractor={(item) => item.id}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={{ paddingBottom: 40 }}
@@ -138,8 +160,21 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
         borderBottomColor: theme.cardBorder
     },
     headerTitle: { fontSize: 18, fontWeight: '700', color: theme.textPrimary },
-    container: { flex: 1, padding: 24 },
-    description: { fontSize: 16, color: theme.textSecondary, marginBottom: 24, lineHeight: 24 },
+    container: { flex: 1, paddingHorizontal: 24, paddingTop: 16 },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.card,
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        height: 50,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: theme.cardBorder
+    },
+    searchIcon: { marginRight: 12 },
+    searchInput: { flex: 1, color: theme.textPrimary, fontSize: 16 },
+    description: { fontSize: 16, color: theme.textSecondary, marginBottom: 20, lineHeight: 24 },
     locationCard: {
         flexDirection: 'row',
         justifyContent: 'space-between',

@@ -37,14 +37,12 @@ export default function HomeScreen() {
             let loc: { latitude: number, longitude: number } | undefined = undefined;
             if (activeTab === 'nearby' && user) {
                 try {
-                    const profileRes = await new (require('../../src/controllers/UserController').UserController)(
-                        require('../../src/core/identity/UserManager').UserManager.getInstance(),
-                        null as any, null as any
-                    ).getMyProfile(user.id);
+                    const { UserManager } = require('../../src/core/identity/UserManager');
+                    const profileData = await UserManager.getInstance().getUserProfile(user.id);
 
-                    if (profileRes.data?.baseLocation) {
+                    if (profileData?.base_location) {
                         const { getLocationByLabel } = require('../../src/data/locations');
-                        const mapped = getLocationByLabel(profileRes.data.baseLocation);
+                        const mapped = getLocationByLabel(profileData.base_location);
                         if (mapped) {
                             loc = { latitude: mapped.latitude, longitude: mapped.longitude };
                         }
@@ -57,7 +55,7 @@ export default function HomeScreen() {
             }
 
             const nearbyRes = await eventController.getEvents(
-                activeTab === 'nearby' && loc ? { category: 'All', location: loc, radius } : { category: 'All' }
+                activeTab === 'nearby' && loc ? { category: 'All', location: loc, radius, userId: user.id } : { category: 'All', userId: user.id }
             );
 
             let myRes: any = { data: [] };

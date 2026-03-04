@@ -230,7 +230,18 @@ export default function MapScreen() {
                                 <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
                             </View>
                             <Text style={{ color: '#94A3B8', fontSize: 16, marginBottom: 20, lineHeight: 22 }}>Buralarda hiç aktivite oluşturulmamış, ilk sen oluştur!</Text>
-                            <TouchableOpacity style={[styles.joinButton, { width: '100%', alignItems: 'center' }]} onPress={() => { setSelectedCoord(null); router.push('/create'); }}>
+                            <TouchableOpacity
+                                style={[styles.joinButton, { width: '100%', alignItems: 'center' }]}
+                                onPress={() => {
+                                    const lat = selectedCoord.latitude;
+                                    const lng = selectedCoord.longitude;
+                                    setSelectedCoord(null);
+                                    router.push({
+                                        pathname: '/(tabs)/create',
+                                        params: { lat, lng }
+                                    });
+                                }}
+                            >
                                 <Text style={styles.joinButtonText}>Create Event Here</Text>
                             </TouchableOpacity>
                         </View>

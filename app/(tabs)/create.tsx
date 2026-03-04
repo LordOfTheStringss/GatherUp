@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { EventController } from '../../src/controllers/EventController';
@@ -34,6 +34,21 @@ export default function CreateEventScreen() {
     const [isPrivate, setIsPrivate] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState<{ latitude: number, longitude: number } | null>(null);
     const [conflictWarning, setConflictWarning] = useState<string | null>(null);
+
+    const params = useLocalSearchParams();
+
+    useEffect(() => {
+        if (params.lat && params.lng) {
+            const lat = parseFloat(params.lat as string);
+            const lng = parseFloat(params.lng as string);
+
+            // Only update if coordinates are different to prevent infinite loops
+            if (!selectedLocation || selectedLocation.latitude !== lat || selectedLocation.longitude !== lng) {
+                setSelectedLocation({ latitude: lat, longitude: lng });
+                showToast('Location pre-selected from map', 'success');
+            }
+        }
+    }, [params.lat, params.lng]);
 
     const DURATIONS = [
         '30 mins', '1 hour', '1.5 hours', '2 hours', '2.5 hours', '3 hours', '4 hours', '5 hours'

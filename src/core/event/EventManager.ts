@@ -111,6 +111,22 @@ export class EventManager {
 
             let allowedIds = [filter.userId, ...friendsIds];
             query = query.in('organizer_id', allowedIds);
+        } else if (filter.userId) {
+            // If not friends-only, but userId is provided (like in Nearby feed),
+            // we should only show (public events) OR (my events) OR (friends' events).
+            // We'll fetch friends first.
+            const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', filter.userId);
+            const { data: whoIFollow } = await this.supabaseClient.client.from('friendships').select('friend_id').eq('user_id', filter.userId);
+            const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
+            const friendsIds = (whoFollowsMe || []).map((f: any) => f.user_id).filter((id: string) => myFollowingIds.includes(id));
+
+            const allowedOrganizerIds = [filter.userId, ...friendsIds];
+
+            // Build the visibility condition: is_private is false OR organizer_id in allowedOrganizerIds
+            query = query.or(`is_private.eq.false,organizer_id.in.(${allowedOrganizerIds.join(',')})`);
+        } else {
+            // No userId, only show public events
+            query = query.eq('is_private', false);
         }
 
         const { data, error } = await query;
