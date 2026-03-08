@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Platform, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -34,25 +33,37 @@ export default function HomeScreen() {
         try {
             const user = await AuthManager.getInstance().getCurrentUser();
 
-            // 1. Fetch Location for Nearby
+            // 1. Fetch Location for Nearby from user's saved base location
             let loc: { latitude: number, longitude: number } | undefined = undefined;
-            if (activeTab === 'nearby') {
-                const { status } = await Location.requestForegroundPermissionsAsync();
-                if (status === 'granted') {
-                    const location = await Location.getCurrentPositionAsync({});
-                    loc = { latitude: location.coords.latitude, longitude: location.coords.longitude };
-                } else {
-                    showToast('Location permission is required for nearby events.', 'error');
+            if (activeTab === 'nearby' && user) {
+                try {
+                    const { UserManager } = require('../../src/core/identity/UserManager');
+                    const profileData = await UserManager.getInstance().getUserProfile(user.id);
+
+                    if (profileData?.base_location) {
+                        const { getLocationByLabel } = require('../../src/data/locations');
+                        const mapped = getLocationByLabel(profileData.base_location);
+                        if (mapped) {
+                            loc = { latitude: mapped.latitude, longitude: mapped.longitude };
+                        }
+                    }
+
+                    if (!loc) showToast('Please set your location in Profile > Event Settings', 'error');
+                } catch (e) {
+                    console.error("Failed to fetch location mapping:", e);
                 }
             }
 
             const nearbyRes = await eventController.getEvents(
-                activeTab === 'nearby' && loc ? { category: 'All', location: loc, radius } : { category: 'All' }
+                activeTab === 'nearby' && loc ? { category: 'All', location: loc, radius, userId: user.id } : { category: 'All', userId: user.id }
             );
 
             let myRes: any = { data: [] };
+            let friendsRes: any = { data: [] };
+
             if (user) {
                 myRes = await eventController.getEvents({ organizerId: user.id });
+                friendsRes = await eventController.getEvents({ category: 'All', friendsOnly: true, userId: user.id });
             }
 
             const mapEvents = (events: any[]) => events.map((e: any) => ({
@@ -67,16 +78,15 @@ export default function HomeScreen() {
             }));
 
             if (nearbyRes.data) {
-                // Filter out my own events from nearby/friends feed
+                // Filter out my own events from nearby feed
                 const filteredOthers = user ? nearbyRes.data.filter((e: any) => e.organizer_id !== user.id) : nearbyRes.data;
                 const mappedOthers = mapEvents(filteredOthers);
-
-                if (activeTab === 'nearby') {
-                    setNearbyEvents(mappedOthers);
-                } else {
-                    setFriendsEvents(mappedOthers); // For now, friends feed is just all events
-                    setNearbyEvents(mappedOthers);
-                }
+                setNearbyEvents(mappedOthers);
+            }
+            if (friendsRes.data) {
+                // Exclude the user's own events from the friends feed to keep it purely "friends' events"
+                const filteredFriends = user ? friendsRes.data.filter((e: any) => e.organizer_id !== user.id) : friendsRes.data;
+                setFriendsEvents(mapEvents(filteredFriends));
             }
             if (myRes.data) {
                 setMyEvents(mapEvents(myRes.data));
@@ -132,9 +142,9 @@ export default function HomeScreen() {
                         <View style={[styles.categoryBadge, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
                             <Text style={[styles.eventCategory, { color: '#3B82F6' }]}>{item.category}</Text>
                         </View>
-                        <TouchableOpacity style={styles.joinButton}>
-                            <Text style={styles.joinButtonText}>Join</Text>
-                        </TouchableOpacity>
+                        <View style={styles.joinButton}>
+                            <Text style={styles.joinButtonText}>View & Join</Text>
+                        </View>
                     </View>
                 </TouchableOpacity>
             );
@@ -151,8 +161,8 @@ export default function HomeScreen() {
                         <Text style={styles.eventCategory}>{item.category}</Text>
                     </View>
                     <View style={styles.capacityBadge}>
-                        <Ionicons name="flame" size={14} color="#EF4444" style={{ marginRight: 4 }} />
-                        <Text style={styles.eventCapacity}>{item.capacity} spots</Text>
+                        <Ionicons name="people" size={16} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                        <Text style={styles.eventCapacity}>{item.capacity} capacity</Text>
                     </View>
                 </View>
                 <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
@@ -178,8 +188,7 @@ export default function HomeScreen() {
                 <View style={styles.header}>
                     <View style={styles.headerLeft}>
                         <View style={styles.headerTextContainer}>
-                            <Text style={styles.greeting}>Gather Up ✨</Text>
-                            <Text style={styles.subGreeting}>Finding your next social spark.</Text>
+                            <Text style={styles.greeting}>Gather<Text style={{ color: '#3B82F6' }}>Up</Text></Text>
                         </View>
                     </View>
                     <TouchableOpacity

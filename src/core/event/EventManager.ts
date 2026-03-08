@@ -53,17 +53,80 @@ export class EventManager {
             console.error('Create event error:', error);
             throw new Error(error.message);
         }
+
+        // Notify friends asynchronously
+        if (!eventData.is_private) {
+            this.notifyFriendsAboutNewEvent(organizerId, eventData.title).catch(e => console.error("Failed to notify friends:", e));
+        }
+
         return data;
     }
 
+    private async notifyFriendsAboutNewEvent(organizerId: string, eventTitle: string) {
+        // 1. Fetch organizer name
+        const { data: user } = await this.supabaseClient.client.from('users').select('full_name').eq('id', organizerId).single();
+        if (!user) return;
+
+        // 2. Fetch friends (mutual follows)
+        const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', organizerId);
+        const { data: whoIFollow } = await this.supabaseClient.client.from('friendships').select('friend_id').eq('user_id', organizerId);
+
+        const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
+        const friendsIds = (whoFollowsMe || []).map((f: any) => f.user_id).filter((id: string) => myFollowingIds.includes(id));
+
+        if (!friendsIds || friendsIds.length === 0) return;
+
+        // 3. Dispatch notifications
+        const { NotificationService } = await import('../../infra/NotificationService');
+        const notifService = NotificationService.getInstance();
+
+        for (const targetId of friendsIds) {
+            await notifService.sendFriendEventNotification(targetId, eventTitle, user.full_name);
+        }
+    }
+
     public async getEvents(filter: EventFilterDTO): Promise<any[]> {
-        let query = this.supabaseClient.client.from('events').select('*, users!events_organizer_id_fkey(full_name)');
+        // Default: Only fetch events that have not yet ended
+        let query = this.supabaseClient.client.from('events')
+            .select('*, users!events_organizer_id_fkey(full_name)');
+
+        if (!filter.includeExpired) {
+            query = query.gte('end_time', new Date().toISOString());
+        }
 
         if (filter.category && filter.category !== 'All') {
             query = query.eq('sub_category', filter.category);
         }
         if (filter.organizerId) {
             query = query.eq('organizer_id', filter.organizerId);
+        }
+
+        if (filter.friendsOnly && filter.userId) {
+            // Fetch accepted friends (mutual follows)
+            const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', filter.userId);
+            const { data: whoIFollow } = await this.supabaseClient.client.from('friendships').select('friend_id').eq('user_id', filter.userId);
+
+            const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
+            const friendsIds = (whoFollowsMe || []).map((f: any) => f.user_id).filter((id: string) => myFollowingIds.includes(id));
+
+            let allowedIds = [filter.userId, ...friendsIds];
+            query = query.in('organizer_id', allowedIds);
+        } else if (filter.userId) {
+            // If not friends-only, but userId is provided (like in Nearby feed),
+            // we should only show (public events) OR (my events) OR (friends' events).
+            // We'll fetch friends first.
+            const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', filter.userId);
+            const { data: whoIFollow } = await this.supabaseClient.client.from('friendships').select('friend_id').eq('user_id', filter.userId);
+            const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
+            const friendsIds = (whoFollowsMe || []).map((f: any) => f.user_id).filter((id: string) => myFollowingIds.includes(id));
+
+            const allowedOrganizerIds = [filter.userId, ...friendsIds];
+
+            // Build the visibility condition: is_private is false OR organizer_id in allowedOrganizerIds
+            query = query.or(`is_private.eq.false,organizer_id.in.(${allowedOrganizerIds.join(',')})`);
+        } else {
+            // No userId, only show public events
+            query = query.eq('is_private', false);
         }
 
         const { data, error } = await query;
@@ -77,7 +140,7 @@ export class EventManager {
 
         // Apply local geographic filtering if requested
         if (filter.location && filter.radius) {
-            results = results.filter(event => {
+            results = results.filter((event: any) => {
                 if (!event.location_lat || !event.location_lng) return false;
                 const dist = this.calculateDistance(
                     filter.location!.latitude,

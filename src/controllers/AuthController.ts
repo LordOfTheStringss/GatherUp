@@ -9,6 +9,7 @@ export interface RegisterDTO {
     age: string;
     password?: string;
     interestTags?: string[];
+    baseLocation?: string;
 }
 
 export interface LoginDTO {
@@ -43,7 +44,8 @@ export class AuthController {
                 password: request.password || '',
                 fullName: request.fullName,
                 username: request.username,
-                age: request.age
+                age: request.age,
+                baseLocation: request.baseLocation
             });
             return { status: 201, message: "User Created" };
         } catch (error: any) {

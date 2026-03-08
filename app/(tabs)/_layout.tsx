@@ -24,14 +24,14 @@ export default function TabLayout() {
                 name="index"
                 options={{
                     title: 'Events',
-                    tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
+                    tabBarIcon: ({ color }) => <Ionicons name="flash-outline" size={24} color={color} />,
                 }}
             />
             <Tabs.Screen
                 name="map"
                 options={{
                     title: 'Map',
-                    tabBarIcon: ({ color }) => <Ionicons name="map" size={24} color={color} />,
+                    tabBarIcon: ({ color }) => <Ionicons name="location-outline" size={24} color={color} />,
                 }}
             />
             <Tabs.Screen
@@ -40,22 +40,22 @@ export default function TabLayout() {
                     title: '',
                     tabBarIcon: ({ focused }) => (
                         <View style={{
-                            width: 64,
-                            height: 64,
-                            backgroundColor: '#8B5CF6',
-                            borderRadius: 32,
+                            width: 60,
+                            height: 60,
+                            backgroundColor: '#3B82F6',
+                            borderRadius: 30,
                             justifyContent: 'center',
                             alignItems: 'center',
-                            marginBottom: Platform.OS === 'ios' ? 20 : 30, // Elevate above tab bar
-                            shadowColor: '#8B5CF6',
+                            marginBottom: Platform.OS === 'ios' ? 15 : 25,
+                            shadowColor: '#3B82F6',
                             shadowOffset: { width: 0, height: 6 },
-                            shadowOpacity: 0.5,
-                            shadowRadius: 10,
+                            shadowOpacity: 0.6,
+                            shadowRadius: 12,
                             elevation: 8,
                             borderWidth: 4,
                             borderColor: theme.card
                         }}>
-                            <Ionicons name="sparkles" size={32} color="#FFF" />
+                            <Ionicons name="sparkles" size={28} color="#FFF" />
                         </View>
                     ),
                 }}
@@ -76,14 +76,14 @@ export default function TabLayout() {
                 name="create"
                 options={{
                     title: 'Create',
-                    tabBarIcon: ({ color }) => <Ionicons name="add-circle" size={24} color={color} />,
+                    tabBarIcon: ({ color }) => <Ionicons name="add-outline" size={28} color={color} />,
                 }}
             />
             <Tabs.Screen
                 name="profile"
                 options={{
                     title: 'Profile',
-                    tabBarIcon: ({ color }) => <Ionicons name="person" size={24} color={color} />,
+                    tabBarIcon: ({ color }) => <Ionicons name="person-circle-outline" size={24} color={color} />,
                 }}
             />
             <Tabs.Screen
@@ -106,6 +106,12 @@ export default function TabLayout() {
             />
             <Tabs.Screen
                 name="notifications"
+                options={{
+                    href: null, // Hides it from the tab bar
+                }}
+            />
+            <Tabs.Screen
+                name="edit-location"
                 options={{
                     href: null, // Hides it from the tab bar
                 }}

@@ -230,7 +230,18 @@ export default function MapScreen() {
                                 <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
                             </View>
                             <Text style={{ color: '#94A3B8', fontSize: 16, marginBottom: 20, lineHeight: 22 }}>Buralarda hiç aktivite oluşturulmamış, ilk sen oluştur!</Text>
-                            <TouchableOpacity style={[styles.joinButton, { width: '100%', alignItems: 'center' }]} onPress={() => { setSelectedCoord(null); router.push('/create'); }}>
+                            <TouchableOpacity
+                                style={[styles.joinButton, { width: '100%', alignItems: 'center' }]}
+                                onPress={() => {
+                                    const lat = selectedCoord.latitude;
+                                    const lng = selectedCoord.longitude;
+                                    setSelectedCoord(null);
+                                    router.push({
+                                        pathname: '/(tabs)/create',
+                                        params: { lat, lng }
+                                    });
+                                }}
+                            >
                                 <Text style={styles.joinButtonText}>Create Event Here</Text>
                             </TouchableOpacity>
                         </View>
@@ -243,7 +254,7 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: '#0F172A' },
+    safeArea: { flex: 1, backgroundColor: '#15202B' },
     container: { flex: 1 },
     mapContainer: { flex: 1, overflow: 'hidden' },
     map: { width: '100%', height: '100%' },
@@ -257,7 +268,7 @@ const styles = StyleSheet.create({
     heatmapToggle: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 20,
@@ -297,7 +308,7 @@ const styles = StyleSheet.create({
         bottom: 40,
         left: 20,
         right: 20,
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         padding: 20,
         borderRadius: 16,
         borderWidth: 1,
@@ -312,7 +323,7 @@ const styles = StyleSheet.create({
         bottom: 20,
         left: 20,
         right: 20,
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         padding: 24,
         borderRadius: 24,
         borderWidth: 1,

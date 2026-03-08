@@ -2,19 +2,23 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
-    Animated,
-    Dimensions,
-    PanResponder,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  PanResponder,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { UserController } from "../../src/controllers/UserController";
 import { FriendshipManager } from "../../src/core/identity/FriendshipManager";
 import { GamificationManager } from "../../src/core/identity/GamificationManager";
 import { UserManager } from "../../src/core/identity/UserManager";
 import { useUIStore } from "../../src/store/uiStore";
+
+// Tema sistemi importları
+import { ThemeColors } from "../../src/theme/colors";
+import { useTheme } from "../../src/theme/useTheme";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SWIPE_THRESHOLD = 120;
@@ -91,19 +95,21 @@ const userController = new UserController(
 );
 
 export default function InterestsScreen() {
+  const { showToast, setGlobalLoading } = useUIStore();
+  const theme = useTheme(); // Tema Hook'u
+  const styles = createStyles(theme); // Stiller temaya bağlandı
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const { showToast, setGlobalLoading } = useUIStore();
 
   const position = useRef(new Animated.ValueXY()).current;
 
   // We only force the user to swipe through a subset so they don't get bored.
-  // Say, 15 items. They can do the rest from the profile.
   const MAX_ONBOARDING_CARDS = 15;
   const isFinished =
     currentIndex >= Math.min(SHUFFLED_INTERESTS.length, MAX_ONBOARDING_CARDS);
 
-  // FIX: Use a ref to keep track of the latest index for the PanResponder closure
+  // Use a ref to keep track of the latest index for the PanResponder closure
   const currentIndexRef = useRef(currentIndex);
   React.useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -188,7 +194,7 @@ export default function InterestsScreen() {
       setGlobalLoading(false);
       showToast("Değerlendirmeler kaydedildi!", "success");
       router.replace("/(auth)/plan");
-    } catch (e) {
+    } catch {
       setGlobalLoading(false);
       showToast("Kaydedilemedi.", "error");
     }
@@ -217,7 +223,7 @@ export default function InterestsScreen() {
               </View>
             ))}
             {selectedInterests.length > 8 && (
-              <Text style={{ color: "#64748B", alignSelf: "center" }}>
+              <Text style={{ color: theme.textSecondary, alignSelf: "center" }}>
                 + {selectedInterests.length - 8} daha
               </Text>
             )}
@@ -293,7 +299,7 @@ export default function InterestsScreen() {
           style={[styles.actionButton, styles.nopeButton]}
           onPress={() => forceSwipe("left")}
         >
-          <Ionicons name="close" size={36} color="#EF4444" />
+          <Ionicons name="close" size={36} color={theme.danger || "#EF4444"} />
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.likeButton]}
@@ -307,7 +313,7 @@ export default function InterestsScreen() {
         <TouchableOpacity onPress={() => router.replace("/(auth)/plan")}>
           <Text
             style={{
-              color: "#64748B",
+              color: theme.textSecondary,
               fontSize: 16,
               fontWeight: "600",
               textDecorationLine: "underline",
@@ -321,152 +327,159 @@ export default function InterestsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#020617" },
-  header: { paddingTop: 60, paddingHorizontal: 20, alignItems: "center" },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#F8FAFC",
-    letterSpacing: 0.5,
-  },
-  subtitle: { fontSize: 16, color: "#94A3B8", marginTop: 8 },
-  counter: { fontSize: 14, color: "#3B82F6", marginTop: 12, fontWeight: "700" },
+// Stiller tamamen dinamik temaya (ThemeColors) bağlandı!
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.background },
+    header: { paddingTop: 60, paddingHorizontal: 20, alignItems: "center" },
+    title: {
+      fontSize: 26,
+      fontWeight: "800",
+      color: theme.textPrimary,
+      letterSpacing: 0.5,
+    },
+    subtitle: { fontSize: 16, color: theme.textSecondary, marginTop: 8 },
+    counter: {
+      fontSize: 14,
+      color: theme.primary,
+      marginTop: 12,
+      fontWeight: "700",
+    },
 
-  titleCentred: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#F8FAFC",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  subtitleCentred: {
-    fontSize: 16,
-    color: "#94A3B8",
-    textAlign: "center",
-    lineHeight: 24,
-    paddingHorizontal: 20,
-  },
+    titleCentred: {
+      fontSize: 32,
+      fontWeight: "900",
+      color: theme.textPrimary,
+      textAlign: "center",
+      marginBottom: 16,
+    },
+    subtitleCentred: {
+      fontSize: 16,
+      color: theme.textSecondary,
+      textAlign: "center",
+      lineHeight: 24,
+      paddingHorizontal: 20,
+    },
 
-  cardContainer: { flex: 1, alignItems: "center", position: "relative" },
-  card: {
-    width: SCREEN_WIDTH - 40,
-    height: SCREEN_WIDTH, // Make it squareish
-    backgroundColor: "#0F172A",
-    borderRadius: 24,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#1E293B",
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-  },
-  cardText: {
-    fontSize: 36,
-    fontWeight: "800",
-    color: "#F8FAFC",
-    textAlign: "center",
-    padding: 20,
-  },
+    cardContainer: { flex: 1, alignItems: "center", position: "relative" },
+    card: {
+      width: SCREEN_WIDTH - 40,
+      height: SCREEN_WIDTH,
+      backgroundColor: theme.card,
+      borderRadius: 24,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 2,
+      borderColor: theme.cardBorder,
+      elevation: 10,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.4,
+      shadowRadius: 20,
+    },
+    cardText: {
+      fontSize: 36,
+      fontWeight: "800",
+      color: theme.textPrimary,
+      textAlign: "center",
+      padding: 20,
+    },
 
-  badge: {
-    position: "absolute",
-    top: 40,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 3,
-  },
-  likeBadge: {
-    left: 40,
-    borderColor: "#10B981",
-    transform: [{ rotate: "-15deg" }],
-  },
-  nopeBadge: {
-    right: 40,
-    borderColor: "#EF4444",
-    transform: [{ rotate: "15deg" }],
-  },
-  likeBadgeText: {
-    color: "#10B981",
-    fontSize: 32,
-    fontWeight: "900",
-    letterSpacing: 2,
-  },
-  nopeBadgeText: {
-    color: "#EF4444",
-    fontSize: 32,
-    fontWeight: "900",
-    letterSpacing: 2,
-  },
+    badge: {
+      position: "absolute",
+      top: 40,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 3,
+    },
+    likeBadge: {
+      left: 40,
+      borderColor: "#10B981",
+      transform: [{ rotate: "-15deg" }],
+    },
+    nopeBadge: {
+      right: 40,
+      borderColor: theme.danger || "#EF4444",
+      transform: [{ rotate: "15deg" }],
+    },
+    likeBadgeText: {
+      color: "#10B981",
+      fontSize: 32,
+      fontWeight: "900",
+      letterSpacing: 2,
+    },
+    nopeBadgeText: {
+      color: theme.danger || "#EF4444",
+      fontSize: 32,
+      fontWeight: "900",
+      letterSpacing: 2,
+    },
 
-  actions: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 40,
-    paddingBottom: 60,
-  },
-  actionButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  nopeButton: {
-    backgroundColor: "#0F172A",
-    borderWidth: 2,
-    borderColor: "#EF4444",
-    shadowColor: "#EF4444",
-  },
-  likeButton: {
-    backgroundColor: "#0F172A",
-    borderWidth: 2,
-    borderColor: "#10B981",
-    shadowColor: "#10B981",
-  },
+    actions: {
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 40,
+      paddingBottom: 60,
+    },
+    actionButton: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      justifyContent: "center",
+      alignItems: "center",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    nopeButton: {
+      backgroundColor: theme.card,
+      borderWidth: 2,
+      borderColor: theme.danger || "#EF4444",
+      shadowColor: theme.danger || "#EF4444",
+    },
+    likeButton: {
+      backgroundColor: theme.card,
+      borderWidth: 2,
+      borderColor: "#10B981",
+      shadowColor: "#10B981",
+    },
 
-  content: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
-  chipsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginVertical: 30,
-    justifyContent: "center",
-  },
-  chip: {
-    backgroundColor: "#1E293B",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  chipText: { color: "#E2E8F0", fontWeight: "bold" },
+    content: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
+    chipsContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      marginVertical: 30,
+      justifyContent: "center",
+    },
+    chip: {
+      backgroundColor: theme.card,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
+    },
+    chipText: { color: theme.textPrimary, fontWeight: "bold" },
 
-  button: {
-    backgroundColor: "#3B82F6",
-    height: 60,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#3B82F6",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  buttonText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-});
+    button: {
+      backgroundColor: theme.primary,
+      height: 60,
+      borderRadius: 16,
+      justifyContent: "center",
+      alignItems: "center",
+      shadowColor: theme.primary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.4,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    buttonText: {
+      color: "#FFFFFF",
+      fontSize: 18,
+      fontWeight: "800",
+      letterSpacing: 0.5,
+    },
+  });

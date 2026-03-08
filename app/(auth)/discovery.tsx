@@ -96,7 +96,7 @@ export default function DiscoveryScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#020617' },
+    container: { flex: 1, backgroundColor: '#0B1120' },
 
     header: { paddingTop: 60, paddingHorizontal: 24, alignItems: 'center' },
     title: { fontSize: 26, fontWeight: '800', color: '#F8FAFC', letterSpacing: 0.5 },
@@ -109,10 +109,10 @@ const styles = StyleSheet.create({
     cardWrapper: {
         width: '100%',
         height: '85%',
-        backgroundColor: '#0F172A',
+        backgroundColor: '#15202B',
         borderRadius: 24,
         borderWidth: 1,
-        borderColor: '#1E293B',
+        borderColor: '#1C2733',
         overflow: 'hidden',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 12 },
@@ -121,8 +121,8 @@ const styles = StyleSheet.create({
         elevation: 12,
     },
     cardImagePlaceholder: { flex: 3, justifyContent: 'center', alignItems: 'center' },
-    cardContent: { flex: 2, padding: 24, backgroundColor: '#0F172A' },
-    cardBadge: { alignSelf: 'flex-start', backgroundColor: '#1E293B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#334155' },
+    cardContent: { flex: 2, padding: 24, backgroundColor: '#15202B' },
+    cardBadge: { alignSelf: 'flex-start', backgroundColor: '#1C2733', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#334155' },
     cardBadgeText: { color: '#E2E8F0', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
     cardTitle: { fontSize: 28, fontWeight: '800', color: '#F8FAFC', marginBottom: 16, lineHeight: 34 },
     cardDetailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
@@ -135,8 +135,8 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
     },
-    nopeButton: { backgroundColor: '#0F172A', borderWidth: 2, borderColor: '#EF4444', shadowColor: '#EF4444' },
-    likeButton: { backgroundColor: '#0F172A', borderWidth: 2, borderColor: '#10B981', shadowColor: '#10B981' },
+    nopeButton: { backgroundColor: '#15202B', borderWidth: 2, borderColor: '#EF4444', shadowColor: '#EF4444' },
+    likeButton: { backgroundColor: '#15202B', borderWidth: 2, borderColor: '#10B981', shadowColor: '#10B981' },
 
     content: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
     button: { backgroundColor: '#3B82F6', height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },

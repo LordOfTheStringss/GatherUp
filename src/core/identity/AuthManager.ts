@@ -23,19 +23,24 @@ export class AuthManager {
         return AuthManager.instance;
     }
 
-    public async register(data: { email: string, password: string, fullName: string, username: string, age: string }): Promise<boolean> {
-        if (!this.validateDomain(data.email)) {
+    public async register(data: { email: string, password: string, fullName: string, username: string, age: string, baseLocation?: string }): Promise<boolean> {
+        const email = data.email.trim();
+        const password = data.password.trim();
+        const username = data.username.trim();
+
+        if (!this.validateDomain(email)) {
             throw new InvalidDomainException();
         }
 
         const { data: authData, error } = await this.supabaseClient.client.auth.signUp({
-            email: data.email,
-            password: data.password,
+            email: email,
+            password: password,
             options: {
                 data: {
                     full_name: data.fullName,
                     username: data.username,
-                    age: data.age
+                    age: data.age,
+                    base_location: data.baseLocation || ''
                 }
             }
         });
@@ -49,14 +54,15 @@ export class AuthManager {
     }
 
     public async login(identifier: string, pass: string): Promise<any> {
-        let loginEmail = identifier;
+        const cleanIdentifier = identifier.trim();
+        let loginEmail = cleanIdentifier;
 
         // If it's not an email format, assume it's a username and try to look up the email
-        if (!identifier.includes('@')) {
+        if (!cleanIdentifier.includes('@')) {
             const { data: userRecord, error: userError } = await this.supabaseClient.client
                 .from('users')
                 .select('email')
-                .eq('username', identifier)
+                .eq('username', cleanIdentifier)
                 .single();
 
             if (userError || !userRecord) {
@@ -73,7 +79,11 @@ export class AuthManager {
 
         if (error) {
             console.error('Login failed:', error);
-            throw new Error("Invalid username or password.");
+            if (error.message.includes('fetch') || error.message.includes('Network')) {
+                throw new Error("Network error. Please check your internet connection.");
+            }
+            // Pass the specific error message from Supabase (e.g., "Email not confirmed")
+            throw new Error(error.message);
         }
 
         if (data?.session) {

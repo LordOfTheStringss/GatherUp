@@ -78,7 +78,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0F172A', // OLED friendly dark mode
+        backgroundColor: '#15202B', // OLED friendly dark mode
     },
     formContainer: {
         flex: 1,
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
         marginBottom: 32,
     },
     input: {
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         color: '#FFFFFF',
         height: 52,
         borderRadius: 8,

@@ -82,6 +82,16 @@ export class NotificationService {
         );
     }
 
+    public async sendFriendEventNotification(targetUserId: string, eventTitle: string, friendName: string): Promise<void> {
+        await this.sendPush(
+            targetUserId,
+            "New Event from a Friend",
+            `${friendName} just created an event: ${eventTitle}`,
+            { action: 'friend_event' },
+            'friend_event'
+        );
+    }
+
     /**
      * Multicast notification to all participants (e.g., "Event location changed").
      */

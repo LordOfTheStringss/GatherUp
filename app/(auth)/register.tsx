@@ -11,11 +11,12 @@ export default function RegisterScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [baseLocation, setBaseLocation] = useState('');
     const { register } = useAuthStore();
     const { showToast } = useUIStore();
 
     const handleRegister = async () => {
-        if (!fullName || !username || !age || !email || !password || !confirmPassword) {
+        if (!fullName || !username || !age || !email || !password || !confirmPassword || !baseLocation) {
             showToast('Please fill in all fields.', 'error');
             return;
         }
@@ -26,7 +27,7 @@ export default function RegisterScreen() {
         }
 
         try {
-            const success = await register({ fullName, username, age, email, password });
+            const success = await register({ fullName, username, age, email, password, baseLocation });
             if (success) {
                 showToast('Registration successful! Check your email to verify.', 'success');
                 // Navigating to interest selection or login
@@ -91,6 +92,29 @@ export default function RegisterScreen() {
                     autoCapitalize="none"
                 />
 
+                <Text style={{ color: '#F8FAFC', marginBottom: 8, marginLeft: 4, fontWeight: '600' }}>Base Location (Ankara)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                    {require('../../src/data/locations').ANKARA_NEIGHBORHOODS.map((loc: any) => (
+                        <TouchableOpacity
+                            key={loc.id}
+                            style={{
+                                backgroundColor: baseLocation === loc.label ? 'rgba(59, 130, 246, 0.2)' : '#1C2733',
+                                paddingHorizontal: 16,
+                                paddingVertical: 10,
+                                borderRadius: 20,
+                                marginRight: 8,
+                                borderWidth: 1,
+                                borderColor: baseLocation === loc.label ? '#3B82F6' : '#2B3847'
+                            }}
+                            onPress={() => setBaseLocation(loc.label)}
+                        >
+                            <Text style={{ color: baseLocation === loc.label ? '#3B82F6' : '#94A3B8', fontWeight: '500' }}>
+                                {loc.label.split(',')[0]}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+
                 <TextInput
                     style={styles.input}
                     placeholder="Password"
@@ -127,7 +151,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0F172A',
+        backgroundColor: '#15202B',
     },
     scrollContent: {
         flexGrow: 1,
@@ -157,7 +181,7 @@ const styles = StyleSheet.create({
         marginBottom: 32,
     },
     input: {
-        backgroundColor: '#1E293B',
+        backgroundColor: '#1C2733',
         color: '#FFFFFF',
         height: 52,
         borderRadius: 8,
