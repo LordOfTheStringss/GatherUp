@@ -1,68 +1,65 @@
-import { OCRProcessor } from '../core/schedule/OCRProcessor';
-import { ScheduleManager } from '../core/schedule/ScheduleManager';
-import { TimeSlot } from '../core/schedule/TimeSlot';
-import { ResponseEntity } from './ResponseEntity';
+import { OCRProcessor } from "../core/schedule/OCRProcessor";
+import { ScheduleManager } from "../core/schedule/ScheduleManager";
+import { TimeSlot } from "../core/schedule/TimeSlot";
+import { ResponseEntity } from "./ResponseEntity";
 
 export interface MultipartFile {
-    buffer: any;
-    filename: string;
+  buffer: any;
+  filename: string;
 }
 
 export interface ScheduleDTO {
-    busyBlocks: TimeSlot[];
-    freeBlocks: TimeSlot[];
+  busyBlocks: TimeSlot[];
+  freeBlocks: TimeSlot[];
 }
 
 export interface TimeSlotDTO {
-    startTime: Date;
-    endTime: Date;
+  startTime: Date;
+  endTime: Date;
 }
 
-/**
- * Manages OCR-based schedule extraction and manual busy blocks.
- */
 export class ScheduleController {
-    // Attributes
-    private scheduleManager: ScheduleManager;
-    private ocrProcessor: OCRProcessor;
+  private scheduleManager: ScheduleManager;
+  private ocrProcessor: OCRProcessor;
 
-    constructor(scheduleManager: ScheduleManager, ocrProcessor: OCRProcessor) {
-        this.scheduleManager = scheduleManager;
-        this.ocrProcessor = ocrProcessor;
-    }
+  constructor(scheduleManager: ScheduleManager, ocrProcessor: OCRProcessor) {
+    this.scheduleManager = scheduleManager;
+    this.ocrProcessor = ocrProcessor;
+  }
 
-    /**
-     * Calls ocrProcessor.uploadImage() and returns image ID.
-     */
-    public async uploadScheduleImage(file: MultipartFile): Promise<ResponseEntity<string>> {
-        return { status: 200, data: "image-id-123" };
-    }
+  public async uploadScheduleImage(
+    file: MultipartFile,
+  ): Promise<ResponseEntity<string>> {
+    const imageId = await this.ocrProcessor.uploadImage(file.buffer);
+    return { status: 200, data: imageId };
+  }
 
-    /**
-     * Calls ocrProcessor.parseSchedule() and returns parsed slots.
-     */
-    public async processScheduleImage(imageId: string): Promise<ResponseEntity<TimeSlot[]>> {
-        return { status: 200, data: [] };
+  // DİKKAT: Buraya userId parametresi ve doğrudan Base64 akışı eklendi
+  public async processScheduleImage(
+    base64Image: string,
+    userId: string,
+  ): Promise<ResponseEntity<TimeSlot[]>> {
+    try {
+      const slots = await this.ocrProcessor.parseSchedule(base64Image, userId);
+      return { status: 200, data: slots };
+    } catch (error: any) {
+      return { status: 400, message: error.message };
     }
+  }
 
-    /**
-     * Calls ocrProcessor.validateParsing() and stores schedule.
-     */
-    public async confirmSchedule(slots: TimeSlot[]): Promise<ResponseEntity> {
-        return { status: 200, message: "Schedule Confirmed" };
-    }
+  // DİKKAT: userId parametresi buraya da eklendi
+  public async confirmSchedule(
+    slots: TimeSlot[],
+    userId: string,
+  ): Promise<ResponseEntity<any>> {
+    return { status: 200, message: "Schedule Confirmed" };
+  }
 
-    /**
-     * Returns busy/free hours of the day.
-     */
-    public async getMySchedule(date: Date): Promise<ResponseEntity<ScheduleDTO>> {
-        return { status: 200 };
-    }
+  public async getMySchedule(date: Date): Promise<ResponseEntity<ScheduleDTO>> {
+    return { status: 200, data: { busyBlocks: [], freeBlocks: [] } };
+  }
 
-    /**
-     * Manually adds busy time block.
-     */
-    public async addBusyBlock(slot: TimeSlotDTO): Promise<ResponseEntity> {
-        return { status: 201, message: "Busy block added" };
-    }
+  public async addBusyBlock(slot: TimeSlotDTO): Promise<ResponseEntity<any>> {
+    return { status: 201, message: "Busy block added" };
+  }
 }

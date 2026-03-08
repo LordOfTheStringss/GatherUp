@@ -1,254 +1,728 @@
-import { router } from 'expo-router';
-import React, { useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ScheduleController } from '../../src/controllers/ScheduleController';
-import { OCRProcessor } from '../../src/core/schedule/OCRProcessor';
-import { ScheduleManager } from '../../src/core/schedule/ScheduleManager';
-import { useUIStore } from '../../src/store/uiStore';
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
+import React, { useState } from "react";
+import {
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { v4 as uuidv4 } from "uuid";
+import { ScheduleController } from "../../src/controllers/ScheduleController";
+import { OCRProcessor } from "../../src/core/schedule/OCRProcessor";
+import { ScheduleManager } from "../../src/core/schedule/ScheduleManager";
+import {
+  BlockType,
+  DataSource,
+  TimeSlot,
+} from "../../src/core/schedule/TimeSlot";
+import { useUIStore } from "../../src/store/uiStore";
 
-// DI Stub
-import * as ImagePicker from 'expo-image-picker';
 const scheduleController = new ScheduleController(
-    new ScheduleManager(),
-    new OCRProcessor()
+  new ScheduleManager(),
+  new OCRProcessor(),
 );
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-const HOURS = ['09:00', '11:00', '13:00', '15:00']; // Simplified for mobile UI
+const DAYS = [
+  { label: "Pzt", index: 1 },
+  { label: "Sal", index: 2 },
+  { label: "Çar", index: 3 },
+  { label: "Per", index: 4 },
+  { label: "Cum", index: 5 },
+  { label: "Cmt", index: 6 },
+  { label: "Paz", index: 0 },
+];
 
-type GridState = { [day: string]: { [hour: string]: boolean } }; // true = busy, false = free
+const HOURS = Array.from({ length: 16 }, (_, i) => i + 8);
 
 export default function PlanTimeScreen() {
-    const { showToast, setGlobalLoading } = useUIStore();
-    const [step, setStep] = useState<'type_select' | 'upload' | 'edit'>('type_select');
-    const [grid, setGrid] = useState<GridState>({});
+  const { showToast, setGlobalLoading } = useUIStore();
+  const [step, setStep] = useState<
+    "type_select" | "upload" | "manual_time" | "calendar_view"
+  >("type_select");
+  const [schedule, setSchedule] = useState<TimeSlot[]>([]);
+  const [activeTab, setActiveTab] = useState<number>(1);
+  const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
 
-    const startManualEntry = () => {
-        // Initialize empty grid for manual entry (e.g. for Working professionals)
-        const emptyGrid: GridState = {};
-        DAYS.forEach(day => {
-            emptyGrid[day] = {};
-            HOURS.forEach(hour => {
-                emptyGrid[day][hour] = false;
-            });
-        });
-        setGrid(emptyGrid);
-        setStep('edit');
-    };
+  const [workStart, setWorkStart] = useState("08:00");
+  const [workEnd, setWorkEnd] = useState("17:00");
 
-    const handleUpload = async () => {
-        try {
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                quality: 1,
-            });
+  // MESAİ ALGORİTMASI: Artık 1 büyük gün bloğu değil, her saat tek tek bağımsız obje olarak üretiliyor!
+  const applyManualHours = () => {
+    const startInt = parseInt(workStart.split(":")[0]);
+    const endInt = parseInt(workEnd.split(":")[0]);
 
-            if (result.canceled) {
-                return;
-            }
-
-            setGlobalLoading(true);
-
-            // 1. Upload mock / Pass to OCR
-            const uploadRes = await scheduleController.uploadScheduleImage({ buffer: result.assets[0].uri, filename: 'schedule.jpg' });
-
-            // 2. Process mock
-            await scheduleController.processScheduleImage(uploadRes.data!);
-
-            // Initialize mock grid representing OCR output
-            const mockGrid: GridState = {};
-            DAYS.forEach(day => {
-                mockGrid[day] = {};
-                HOURS.forEach(hour => {
-                    // Randomly set some as busy to simulate processed schedule
-                    mockGrid[day][hour] = Math.random() > 0.7;
-                });
-            });
-            setGrid(mockGrid);
-            setStep('edit');
-            showToast('Schedule parsed! Tap slots to fix any mistakes.', 'success');
-        } catch (e) {
-            showToast('Processing failed', 'error');
-        } finally {
-            setGlobalLoading(false);
-        }
-    };
-
-    const toggleSlot = (day: string, hour: string) => {
-        setGrid(prev => ({
-            ...prev,
-            [day]: {
-                ...prev[day],
-                [hour]: !prev[day][hour]
-            }
-        }));
-    };
-
-    const handleConfirm = async () => {
-        setGlobalLoading(true);
-        try {
-            // Typically we would map the visual grid back to DTOs
-            await scheduleController.confirmSchedule([]);
-            showToast('Schedule saved!', 'success');
-            router.replace('/(tabs)');
-        } catch (error) {
-            showToast('Failed to save schedule', 'error');
-        } finally {
-            setGlobalLoading(false);
-        }
-    };
-
-    if (step === 'type_select') {
-        return (
-            <View style={styles.container}>
-                <View style={styles.content}>
-                    <Text style={styles.title}>Welcome!</Text>
-                    <Text style={styles.subtitle}>To help us find the best times for your events, tell us about your daily routine.</Text>
-
-                    <TouchableOpacity style={styles.typeButton} onPress={() => setStep('upload')}>
-                        <View style={styles.typeIconContainer}><Text style={{ fontSize: 24 }}>🎓</Text></View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.typeTitle}>I'm a Student</Text>
-                            <Text style={styles.typeDesc}>Upload your class schedule (OCR) or set it manually.</Text>
-                        </View>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.typeButton} onPress={startManualEntry}>
-                        <View style={styles.typeIconContainer}><Text style={{ fontSize: 24 }}>💼</Text></View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.typeTitle}>I'm Working</Text>
-                            <Text style={styles.typeDesc}>Manually set your working hours and availability.</Text>
-                        </View>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={[styles.linkTouchTarget, { marginTop: 40 }]}>
-                        <Text style={styles.linkText}>Skip for now</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        );
+    if (startInt >= endInt || isNaN(startInt) || isNaN(endInt)) {
+      showToast("Geçerli bir saat girin (Örn: 08:00 ve 17:00)", "error");
+      return;
     }
 
-    if (step === 'upload') {
-        return (
-            <View style={styles.container}>
-                <View style={styles.content}>
-                    <Text style={styles.title}>Plan Your Time</Text>
-                    <Text style={styles.subtitle}>Upload your University timetable. Our AI will automatically extract your busy hours.</Text>
+    const newSlots: TimeSlot[] = [];
+    const today = new Date();
 
-                    <TouchableOpacity style={styles.uploadBox} onPress={handleUpload}>
-                        <Text style={styles.uploadText}>📸 Tap to Choose from Gallery</Text>
-                    </TouchableOpacity>
+    for (let i = 1; i <= 5; i++) {
+      const diff = i - today.getDay();
 
-                    <TouchableOpacity onPress={startManualEntry} style={styles.linkTouchTarget}>
-                        <Text style={styles.linkText}>Enter manually instead</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
+      // Tüm günü kapsayan blok yerine, her saati ayrı dilimliyoruz
+      for (let h = startInt; h < endInt; h++) {
+        const startDate = new Date(today);
+        startDate.setDate(today.getDate() + diff);
+        startDate.setHours(h, 0, 0, 0);
+
+        const endDate = new Date(startDate);
+        endDate.setHours(h + 1, 0, 0, 0);
+
+        newSlots.push(
+          new TimeSlot(
+            uuidv4(),
+            "user-123",
+            startDate,
+            endDate,
+            BlockType.BUSY,
+            DataSource.MANUAL,
+            true,
+            { title: "İş (Mesai)", type: "İş", color: "#D97706" },
+          ),
         );
+      }
     }
 
+    setSchedule(newSlots);
+    setStep("calendar_view");
+    showToast("Hafta içi mesai saatlerin eklendi!", "success");
+  };
+
+  const handleUpload = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+        base64: true,
+      });
+      if (result.canceled || !result.assets[0].base64) return;
+      setGlobalLoading(true);
+      const response = await scheduleController.processScheduleImage(
+        result.assets[0].base64,
+        "user-123",
+      );
+      if (response.status !== 200 || !response.data)
+        throw new Error(response.message);
+
+      const coloredSlots = response.data.map((slot: TimeSlot) => {
+        slot.metadata.type = "Ders";
+        slot.metadata.color = "#E11D48";
+        if (!slot.metadata.title) slot.metadata.title = "Ders / Etkinlik";
+        return slot;
+      });
+      setSchedule(coloredSlots);
+      setStep("calendar_view");
+      showToast("Ders programın analiz edildi!", "success");
+    } catch (e: any) {
+      showToast(e.message || "Analiz başarısız oldu.", "error");
+    } finally {
+      setGlobalLoading(false);
+    }
+  };
+
+  const getSlotForHour = (hourInt: number) => {
+    return schedule.find(
+      (s) =>
+        s.startTime.getDay() === activeTab &&
+        s.startTime.getHours() === hourInt,
+    );
+  };
+
+  const toggleAvailable = (hourInt: number) => {
+    const existing = getSlotForHour(hourInt);
+    if (existing) {
+      if (existing.metadata?.type === "Müsait") {
+        setSchedule((prev) => prev.filter((s) => s.slotId !== existing.slotId));
+      } else {
+        setSelectedSlot(existing);
+      }
+    } else {
+      const today = new Date();
+      const diff = activeTab - today.getDay();
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() + diff);
+      startDate.setHours(hourInt, 0, 0, 0);
+      const endDate = new Date(startDate);
+      endDate.setHours(hourInt + 1, 0, 0, 0);
+      const newSlot = new TimeSlot(
+        uuidv4(),
+        "user-123",
+        startDate,
+        endDate,
+        BlockType.FREE,
+        DataSource.MANUAL,
+        true,
+        { title: "Sosyalleşmeye Müsait", type: "Müsait", color: "#10B981" },
+      );
+      setSchedule((prev) => [...prev, newSlot]);
+    }
+  };
+
+  const handleConfirm = async () => {
+    setGlobalLoading(true);
+    try {
+      await scheduleController.confirmSchedule(schedule, "user-123");
+      showToast("Programın profiline kaydedildi!", "success");
+      router.replace("/(tabs)");
+    } catch (error) {
+      showToast("Kaydedilemedi.", "error");
+    } finally {
+      setGlobalLoading(false);
+    }
+  };
+
+  if (step === "type_select") {
     return (
-        <View style={styles.container}>
-            <Text style={[styles.title, { paddingHorizontal: 20, paddingTop: 60 }]}>Verify Schedule</Text>
-            <Text style={[styles.subtitle, { paddingHorizontal: 20, marginBottom: 20 }]}>
-                Review and correct any mistakes. Red means busy, Green means free.
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Hoş Geldin!</Text>
+          <Text style={styles.subtitle}>
+            Sana en uygun etkinlik zamanlarını bulabilmemiz için günlük rutinine
+            ihtiyacımız var.
+          </Text>
+          <TouchableOpacity
+            style={styles.typeButton}
+            onPress={() => setStep("upload")}
+          >
+            <View style={styles.typeIconContainer}>
+              <Text style={{ fontSize: 24 }}>🎓</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.typeTitle}>Öğrenciyim</Text>
+              <Text style={styles.typeDesc}>Ders programını (OBS) yükle.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#64748B" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.typeButton}
+            onPress={() => setStep("manual_time")}
+          >
+            <View style={styles.typeIconContainer}>
+              <Text style={{ fontSize: 24 }}>💼</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.typeTitle}>Çalışıyorum</Text>
+              <Text style={styles.typeDesc}>Mesai saatlerini belirle.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#64748B" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.bottomNav}>
+          <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
+            <Text style={styles.skipText}>Şimdilik Atla</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (step === "manual_time" || step === "upload") {
+    return (
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <Text style={styles.title}>
+            {step === "upload" ? "Zamanını Planla" : "Mesai Saatlerin"}
+          </Text>
+          <Text style={styles.subtitle}>
+            {step === "upload"
+              ? "Ders programını yükle, yapay zeka halletsin."
+              : "Çalışma saatlerini gir, takvime dökelim."}
+          </Text>
+          {step === "upload" ? (
+            <TouchableOpacity style={styles.uploadBox} onPress={handleUpload}>
+              <Ionicons
+                name="camera"
+                size={48}
+                color="#3B82F6"
+                style={{ marginBottom: 10 }}
+              />
+              <Text style={styles.uploadText}>Galeriden Seç</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.timeInputContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Başlangıç</Text>
+                <TextInput
+                  style={styles.input}
+                  value={workStart}
+                  onChangeText={setWorkStart}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                />
+              </View>
+              <Text style={styles.dashText}>-</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Bitiş</Text>
+                <TextInput
+                  style={styles.input}
+                  value={workEnd}
+                  onChangeText={setWorkEnd}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                />
+              </View>
+            </View>
+          )}
+          {step === "manual_time" && (
+            <TouchableOpacity style={styles.button} onPress={applyManualHours}>
+              <Text style={styles.buttonText}>Tabloyu Oluştur</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={styles.bottomNav}>
+          <TouchableOpacity
+            onPress={() => setStep("type_select")}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={20} color="#94A3B8" />
+            <Text style={styles.backText}>Geri Dön</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
+            <Text style={styles.skipText}>Şimdilik Atla</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.headerArea}>
+        <TouchableOpacity
+          onPress={() => setStep("type_select")}
+          style={styles.headerBackBtn}
+        >
+          <Ionicons name="chevron-back" size={28} color="#FFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Haftalık Programını Düzenle</Text>
+      </View>
+
+      <View style={styles.tabsContainer}>
+        {DAYS.map((day) => {
+          const isActive = activeTab === day.index;
+          return (
+            <TouchableOpacity
+              key={day.label}
+              style={[styles.tab, isActive && styles.activeTab]}
+              onPress={() => setActiveTab(day.index)}
+            >
+              <Text style={[styles.tabText, isActive && styles.activeTabText]}>
+                {day.label}
+              </Text>
+              {isActive && <View style={styles.activeTabIndicator} />}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <ScrollView
+        style={styles.timelineContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {HOURS.map((hour) => {
+          const slot = getSlotForHour(hour);
+          const isMusait = slot?.metadata?.type === "Müsait";
+
+          return (
+            <View style={styles.timelineRow} key={hour}>
+              <Text style={styles.timeLabel}>
+                {hour.toString().padStart(2, "0")}:00
+              </Text>
+              <View style={styles.slotArea}>
+                {slot ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.card,
+                      isMusait
+                        ? styles.cardMusait
+                        : {
+                            backgroundColor: slot.metadata?.color || "#3B82F6",
+                          },
+                    ]}
+                    onPress={() => toggleAvailable(hour)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={
+                        isMusait
+                          ? "checkmark-circle"
+                          : slot.metadata?.type === "İş"
+                            ? "briefcase"
+                            : "book"
+                      }
+                      size={20}
+                      color={isMusait ? "#10B981" : "#FFF"}
+                      style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.cardType,
+                          isMusait ? { color: "#10B981" } : {},
+                        ]}
+                      >
+                        {slot.metadata?.type
+                          ? String(slot.metadata.type)
+                          : "Etkinlik"}
+                      </Text>
+
+                      {isMusait ? null : (
+                        <View>
+                          <Text style={styles.cardTitle} numberOfLines={1}>
+                            {slot.metadata?.title
+                              ? String(slot.metadata.title)
+                              : "Detay belirtilmedi"}
+                          </Text>
+                          {!!slot.metadata?.location && (
+                            <Text style={styles.cardLocation} numberOfLines={1}>
+                              📍 {String(slot.metadata.location)}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.emptySlot}
+                    onPress={() => toggleAvailable(hour)}
+                  >
+                    <Ionicons name="add" size={24} color="#334155" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })}
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      <View style={styles.footerFloat}>
+        <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
+          <Text style={styles.confirmBtnText}>Profili Güncelle ve Bitir</Text>
+          <Ionicons
+            name="arrow-forward"
+            size={20}
+            color="#FFF"
+            style={{ marginLeft: 8 }}
+          />
+        </TouchableOpacity>
+      </View>
+
+      <Modal visible={!!selectedSlot} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View
+              style={[
+                styles.modalHeaderLine,
+                { backgroundColor: selectedSlot?.metadata?.color || "#3B82F6" },
+              ]}
+            />
+            <View style={styles.modalHeader}>
+              <View style={styles.modalBadge}>
+                <Text style={styles.modalBadgeText}>
+                  {selectedSlot?.metadata?.type
+                    ? String(selectedSlot.metadata.type)
+                    : "Etkinlik"}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedSlot(null)}>
+                <Ionicons name="close-circle" size={28} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalTitle}>
+              {selectedSlot?.metadata?.title
+                ? String(selectedSlot.metadata.title)
+                : "Detay belirtilmedi"}
             </Text>
 
-            <ScrollView horizontal style={styles.gridContainer}>
-                <View>
-                    <View style={styles.row}>
-                        <View style={styles.cornerCell} />
-                        {DAYS.map(day => (
-                            <Text key={day} style={styles.headerCell}>{day}</Text>
-                        ))}
-                    </View>
+            {!!selectedSlot?.metadata?.location && (
+              <View style={styles.modalLocationRow}>
+                <Ionicons name="location-outline" size={20} color="#94A3B8" />
+                <Text style={styles.modalTimeText}>
+                  {String(selectedSlot.metadata.location)}
+                </Text>
+              </View>
+            )}
 
-                    {HOURS.map(hour => (
-                        <View style={styles.row} key={hour}>
-                            <Text style={styles.timeLabel}>{hour}</Text>
-                            {DAYS.map(day => {
-                                const isBusy = grid[day]?.[hour];
-                                return (
-                                    <TouchableOpacity
-                                        key={`${day}-${hour}`}
-                                        style={[styles.gridCell, isBusy ? styles.cellBusy : styles.cellFree]}
-                                        onPress={() => toggleSlot(day, hour)}
-                                    />
-                                );
-                            })}
-                        </View>
-                    ))}
-                </View>
-            </ScrollView>
-
-            <View style={styles.footer}>
-                <TouchableOpacity style={styles.button} onPress={handleConfirm}>
-                    <Text style={styles.buttonText}>Confirm & Finish</Text>
-                </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.modalDeleteBtn}
+              onPress={() => {
+                setSchedule((prev) =>
+                  prev.filter((s) => s.slotId !== selectedSlot?.slotId),
+                );
+                setSelectedSlot(null);
+              }}
+            >
+              <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              <Text style={styles.modalDeleteText}>Etkinliği Sil</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-    );
+      </Modal>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0F172A' },
-    content: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
-    title: { fontSize: 28, fontWeight: 'bold', color: '#FFF', marginBottom: 8 },
-    subtitle: { fontSize: 16, color: '#94A3B8', marginBottom: 32 },
+  container: { flex: 1, backgroundColor: "#0F172A" },
+  content: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
+  title: { fontSize: 28, fontWeight: "bold", color: "#FFF", marginBottom: 8 },
+  subtitle: { fontSize: 15, color: "#94A3B8", marginBottom: 20 },
+  typeButton: {
+    backgroundColor: "#1E293B",
+    flexDirection: "row",
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  typeIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#334155",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  typeTitle: { color: "#FFF", fontSize: 18, fontWeight: "bold" },
+  typeDesc: { color: "#94A3B8", fontSize: 13 },
+  uploadBox: {
+    height: 200,
+    backgroundColor: "#1E293B",
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#3B82F6",
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  uploadText: { fontSize: 18, color: "#3B82F6", fontWeight: "bold" },
+  timeInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 30,
+  },
+  inputGroup: { flex: 1 },
+  inputLabel: { color: "#94A3B8", marginBottom: 8, fontSize: 14 },
+  input: {
+    backgroundColor: "#1E293B",
+    color: "#FFF",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#334155",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  dashText: {
+    color: "#94A3B8",
+    fontSize: 24,
+    marginHorizontal: 15,
+    marginTop: 20,
+  },
+  button: {
+    backgroundColor: "#3B82F6",
+    height: 52,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 10,
+  },
+  buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
+  bottomNav: {
+    padding: 24,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    marginLeft: -10,
+  },
+  backText: {
+    color: "#94A3B8",
+    fontSize: 16,
+    marginLeft: 6,
+    fontWeight: "600",
+  },
+  skipText: {
+    color: "#64748B",
+    fontSize: 16,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
 
-    typeButton: {
-        backgroundColor: '#1E293B',
-        flexDirection: 'row',
-        padding: 20,
-        borderRadius: 16,
-        marginBottom: 16,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#334155'
-    },
-    typeIconContainer: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#334155', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-    typeTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
-    typeDesc: { color: '#94A3B8', fontSize: 14, lineHeight: 20 },
+  headerArea: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  headerBackBtn: { marginRight: 15 },
+  headerTitle: { color: "#FFF", fontSize: 20, fontWeight: "bold" },
+  tabsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1E293B",
+    paddingBottom: 10,
+  },
+  tab: { alignItems: "center", paddingVertical: 10, width: 45 },
+  activeTab: {},
+  tabText: { color: "#64748B", fontSize: 14, fontWeight: "600" },
+  activeTabText: { color: "#A855F7", fontWeight: "bold" },
+  activeTabIndicator: {
+    width: 30,
+    height: 4,
+    backgroundColor: "#A855F7",
+    borderRadius: 2,
+    position: "absolute",
+    bottom: -10,
+  },
 
-    uploadBox: {
-        height: 200,
-        backgroundColor: '#1E293B',
-        borderRadius: 16,
-        borderWidth: 2,
-        borderColor: '#334155',
-        borderStyle: 'dashed',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    uploadText: { fontSize: 18, color: '#3B82F6', fontWeight: 'bold' },
+  timelineContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
+  timelineRow: { flexDirection: "row", marginBottom: 15, minHeight: 70 },
+  timeLabel: {
+    width: 50,
+    color: "#94A3B8",
+    fontSize: 14,
+    fontWeight: "bold",
+    marginTop: 15,
+  },
+  slotArea: { flex: 1, marginLeft: 10 },
 
-    gridContainer: { flex: 1, paddingHorizontal: 20 },
-    row: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    cornerCell: { width: 60, height: 40 },
-    headerCell: { width: 60, color: '#94A3B8', textAlign: 'center', fontWeight: 'bold' },
-    timeLabel: { width: 60, color: '#94A3B8', fontSize: 12 },
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+    borderRadius: 16,
+    height: 75,
+  },
+  cardType: { color: "#FFF", fontSize: 15, fontWeight: "bold" },
+  cardTitle: { color: "rgba(255,255,255,0.9)", fontSize: 13, marginTop: 2 },
+  cardLocation: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: "500",
+  },
 
-    gridCell: {
-        width: 60,
-        height: 40,
-        marginHorizontal: 4,
-        borderRadius: 6,
-        borderWidth: 1,
-        borderColor: '#334155',
-    },
-    cellFree: { backgroundColor: '#10B981' }, // Emerald green
-    cellBusy: { backgroundColor: '#EF4444' }, // Red
+  cardMusait: {
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderColor: "#10B981",
+    borderStyle: "dashed",
+  },
+  emptySlot: {
+    flex: 1,
+    backgroundColor: "#161E2E",
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    height: 75,
+  },
 
-    footer: { padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24 },
-    button: {
-        backgroundColor: '#3B82F6', height: 52, borderRadius: 8,
-        justifyContent: 'center', alignItems: 'center'
-    },
-    buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  footerFloat: { position: "absolute", bottom: 30, left: 20, right: 20 },
+  confirmBtn: {
+    backgroundColor: "#A855F7",
+    flexDirection: "row",
+    height: 56,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#A855F7",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  confirmBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
 
-    linkTouchTarget: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-    linkText: { color: '#94A3B8', fontSize: 16 }
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(2, 6, 23, 0.7)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#1E293B",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
+    elevation: 10,
+  },
+  modalHeaderLine: {
+    width: 60,
+    height: 5,
+    borderRadius: 3,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalBadge: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  modalBadgeText: { color: "#FFF", fontSize: 14, fontWeight: "bold" },
+  modalTitle: {
+    color: "#F8FAFC",
+    fontSize: 24,
+    fontWeight: "800",
+    marginBottom: 20,
+  },
+  modalLocationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  modalTimeText: {
+    color: "#94A3B8",
+    fontSize: 16,
+    marginLeft: 8,
+    fontWeight: "500",
+  },
+  modalDeleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+    marginBottom: 20,
+  },
+  modalDeleteText: {
+    color: "#EF4444",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginLeft: 8,
+  },
 });
