@@ -5,7 +5,7 @@ import { ImageProcessingException } from "./Exceptions";
 import { BlockType, DataSource, TimeSlot } from "./TimeSlot";
 
 // API Anahtarını aynen korudum
-const GEMINI_API_KEY = "AIzaSyAvIMw1D7HxucsDruZtT7W-WaXabRHqTnc";
+const GEMINI_API_KEY = "AIzaSyBPEUFJdXAFUdPLXc8x6DKZ7bpKGWI6laA";
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export class OCRProcessor {

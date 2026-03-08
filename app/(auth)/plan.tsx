@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Modal,
   Platform,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,8 +24,6 @@ import {
   TimeSlot,
 } from "../../src/core/schedule/TimeSlot";
 import { useUIStore } from "../../src/store/uiStore";
-
-// Tema sistemi importları eklendi
 import { ThemeColors } from "../../src/theme/colors";
 import { useTheme } from "../../src/theme/useTheme";
 
@@ -32,39 +32,63 @@ const scheduleController = new ScheduleController(
   new OCRProcessor(),
 );
 
+// KATEGORİLER İNGİLİZCE
+const CATEGORIES = [
+  { label: "Class", color: "#E11D48", icon: "book" },
+  { label: "Work", color: "#F59E0B", icon: "briefcase" },
+  { label: "Sports", color: "#3B82F6", icon: "fitness" },
+  { label: "Tech", color: "#8B5CF6", icon: "code-working" },
+  { label: "Art", color: "#EC4899", icon: "color-palette" },
+  { label: "Hobby", color: "#8310b9", icon: "heart" },
+  { label: "Social", color: "#10B981", icon: "people" },
+];
+
 const DAYS = [
-  { label: "Pzt", index: 1 },
-  { label: "Sal", index: 2 },
-  { label: "Çar", index: 3 },
-  { label: "Per", index: 4 },
-  { label: "Cum", index: 5 },
-  { label: "Cmt", index: 6 },
-  { label: "Paz", index: 0 },
+  { label: "Mon", index: 1 },
+  { label: "Tue", index: 2 },
+  { label: "Wed", index: 3 },
+  { label: "Thu", index: 4 },
+  { label: "Fri", index: 5 },
+  { label: "Sat", index: 6 },
+  { label: "Sun", index: 0 },
 ];
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 8);
 
 export default function PlanTimeScreen() {
   const { showToast, setGlobalLoading } = useUIStore();
-  const theme = useTheme(); // Tema hook'u çağrıldı
-  const styles = createStyles(theme); // Stiller temaya bağlandı
+  const theme = useTheme();
+  const styles = createStyles(theme);
 
   const [step, setStep] = useState<
     "type_select" | "upload" | "manual_time" | "calendar_view"
   >("type_select");
   const [schedule, setSchedule] = useState<TimeSlot[]>([]);
   const [activeTab, setActiveTab] = useState<number>(1);
-  const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
 
-  const [workStart, setWorkStart] = useState("08:00");
-  const [workEnd, setWorkEnd] = useState("17:00");
+  const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [newEntry, setNewEntry] = useState({
+    title: "",
+    category: CATEGORIES[0],
+    hour: 8,
+  });
+
+  const [workStart, setWorkStart] = useState<Date>(
+    new Date(new Date().setHours(8, 0, 0, 0)),
+  );
+  const [workEnd, setWorkEnd] = useState<Date>(
+    new Date(new Date().setHours(17, 0, 0, 0)),
+  );
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
 
   const applyManualHours = () => {
-    const startInt = parseInt(workStart.split(":")[0]);
-    const endInt = parseInt(workEnd.split(":")[0]);
+    const startInt = workStart.getHours();
+    const endInt = workEnd.getHours();
 
-    if (startInt >= endInt || isNaN(startInt) || isNaN(endInt)) {
-      showToast("Geçerli bir saat girin (Örn: 08:00 ve 17:00)", "error");
+    if (startInt >= endInt) {
+      showToast("End time must be after start time", "error");
       return;
     }
 
@@ -73,12 +97,10 @@ export default function PlanTimeScreen() {
 
     for (let i = 1; i <= 5; i++) {
       const diff = i - today.getDay();
-
       for (let h = startInt; h < endInt; h++) {
         const startDate = new Date(today);
         startDate.setDate(today.getDate() + diff);
         startDate.setHours(h, 0, 0, 0);
-
         const endDate = new Date(startDate);
         endDate.setHours(h + 1, 0, 0, 0);
 
@@ -91,15 +113,14 @@ export default function PlanTimeScreen() {
             BlockType.BUSY,
             DataSource.MANUAL,
             true,
-            { title: "İş (Mesai)", type: "İş", color: "#F59E0B" }, // Turuncu tema rengi
+            { title: "Work", type: "Work", color: "#F59E0B" },
           ),
         );
       }
     }
-
     setSchedule(newSlots);
     setStep("calendar_view");
-    showToast("Hafta içi mesai saatlerin eklendi!", "success");
+    showToast("Weekday work hours added!", "success");
   };
 
   const handleUpload = async () => {
@@ -110,6 +131,7 @@ export default function PlanTimeScreen() {
         base64: true,
       });
       if (result.canceled || !result.assets[0].base64) return;
+
       setGlobalLoading(true);
       const response = await scheduleController.processScheduleImage(
         result.assets[0].base64,
@@ -118,57 +140,91 @@ export default function PlanTimeScreen() {
       if (response.status !== 200 || !response.data)
         throw new Error(response.message);
 
-      const coloredSlots = response.data.map((slot: TimeSlot) => {
-        slot.metadata.type = "Ders";
-        slot.metadata.color = "#E11D48";
-        if (!slot.metadata.title) slot.metadata.title = "Ders / Etkinlik";
-        return slot;
+      const coloredSlots = response.data.map((slot: any) => {
+        return new TimeSlot(
+          slot.slotId || uuidv4(),
+          "user-123",
+          new Date(slot.startTime),
+          new Date(slot.endTime),
+          BlockType.BUSY,
+          DataSource.OCR,
+          false,
+          {
+            title: slot.metadata?.title || "Class",
+            type: "Class",
+            color: "#E11D48",
+          },
+        );
       });
+
       setSchedule(coloredSlots);
       setStep("calendar_view");
-      showToast("Ders programın analiz edildi!", "success");
+      showToast(
+        "Schedule analyzed! You can add events to empty slots.",
+        "success",
+      );
     } catch (e: any) {
-      showToast(e.message || "Analiz başarısız oldu.", "error");
+      showToast(e.message || "Analysis failed.", "error");
     } finally {
       setGlobalLoading(false);
     }
   };
 
   const getSlotForHour = (hourInt: number) => {
-    return schedule.find(
-      (s) =>
-        s.startTime.getDay() === activeTab &&
-        s.startTime.getHours() === hourInt,
-    );
+    return schedule.find((s: any) => {
+      if (!s.startTime) return false;
+      const st = new Date(s.startTime);
+      return st.getDay() === activeTab && st.getHours() === hourInt;
+    });
   };
 
-  const toggleAvailable = (hourInt: number) => {
-    const existing = getSlotForHour(hourInt);
-    if (existing) {
-      if (existing.metadata?.type === "Müsait") {
-        setSchedule((prev) => prev.filter((s) => s.slotId !== existing.slotId));
-      } else {
-        setSelectedSlot(existing);
-      }
-    } else {
-      const today = new Date();
-      const diff = activeTab - today.getDay();
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() + diff);
-      startDate.setHours(hourInt, 0, 0, 0);
-      const endDate = new Date(startDate);
-      endDate.setHours(hourInt + 1, 0, 0, 0);
-      const newSlot = new TimeSlot(
-        uuidv4(),
-        "user-123",
-        startDate,
-        endDate,
-        BlockType.FREE,
-        DataSource.MANUAL,
-        true,
-        { title: "Sosyalleşmeye Müsait", type: "Müsait", color: "#10B981" },
+  const handleSlotPress = (slot: TimeSlot) => setSelectedSlot(slot);
+
+  const handleAddPress = (hourInt: number) => {
+    setNewEntry({ ...newEntry, hour: hourInt, title: "" });
+    setIsAddModalVisible(true);
+  };
+
+  const confirmAddEntry = () => {
+    if (!newEntry.title.trim()) {
+      showToast("Please enter a title", "error");
+      return;
+    }
+    const today = new Date();
+    const diff = activeTab - today.getDay();
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() + diff);
+    startDate.setHours(newEntry.hour, 0, 0, 0);
+
+    const endDate = new Date(startDate);
+    endDate.setHours(newEntry.hour + 1, 0, 0, 0);
+
+    const newSlot = new TimeSlot(
+      uuidv4(),
+      "user-123",
+      startDate,
+      endDate,
+      BlockType.BUSY,
+      DataSource.MANUAL,
+      true,
+      {
+        title: newEntry.title,
+        type: newEntry.category.label,
+        color: newEntry.category.color,
+      },
+    );
+
+    setSchedule([...schedule, newSlot]);
+    setIsAddModalVisible(false);
+  };
+
+  const confirmDeleteFromModal = () => {
+    if (selectedSlot) {
+      const updatedSchedule = schedule.filter(
+        (s) => s.slotId !== selectedSlot.slotId,
       );
-      setSchedule((prev) => [...prev, newSlot]);
+      setSchedule(updatedSchedule);
+      setSelectedSlot(null);
     }
   };
 
@@ -176,10 +232,10 @@ export default function PlanTimeScreen() {
     setGlobalLoading(true);
     try {
       await scheduleController.confirmSchedule(schedule, "user-123");
-      showToast("Programın profiline kaydedildi!", "success");
+      showToast("Schedule saved successfully!", "success");
       router.replace("/(tabs)");
     } catch (error) {
-      showToast("Kaydedilemedi.", "error");
+      showToast("Failed to save.", "error");
     } finally {
       setGlobalLoading(false);
     }
@@ -189,10 +245,9 @@ export default function PlanTimeScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.content}>
-          <Text style={styles.title}>Hoş Geldin!</Text>
+          <Text style={styles.title}>Welcome!</Text>
           <Text style={styles.subtitle}>
-            Sana en uygun etkinlik zamanlarını bulabilmemiz için günlük rutinine
-            ihtiyacımız var.
+            We need your daily routine to suggest the best event times for you.
           </Text>
           <TouchableOpacity
             style={styles.typeButton}
@@ -202,8 +257,10 @@ export default function PlanTimeScreen() {
               <Text style={{ fontSize: 24 }}>🎓</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.typeTitle}>Öğrenciyim</Text>
-              <Text style={styles.typeDesc}>Ders programını (OBS) yükle.</Text>
+              <Text style={styles.typeTitle}>I am a Student</Text>
+              <Text style={styles.typeDesc}>
+                Upload your class schedule (OCR).
+              </Text>
             </View>
             <Ionicons
               name="chevron-forward"
@@ -219,8 +276,8 @@ export default function PlanTimeScreen() {
               <Text style={{ fontSize: 24 }}>💼</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.typeTitle}>Çalışıyorum</Text>
-              <Text style={styles.typeDesc}>Mesai saatlerini belirle.</Text>
+              <Text style={styles.typeTitle}>I am Working</Text>
+              <Text style={styles.typeDesc}>Set your working hours.</Text>
             </View>
             <Ionicons
               name="chevron-forward"
@@ -231,7 +288,7 @@ export default function PlanTimeScreen() {
         </View>
         <View style={styles.bottomNav}>
           <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
-            <Text style={styles.skipText}>Şimdilik Atla</Text>
+            <Text style={styles.skipText}>Skip for now</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -243,13 +300,14 @@ export default function PlanTimeScreen() {
       <View style={styles.container}>
         <View style={styles.content}>
           <Text style={styles.title}>
-            {step === "upload" ? "Zamanını Planla" : "Mesai Saatlerin"}
+            {step === "upload" ? "Plan Your Schedule" : "Working Hours"}
           </Text>
           <Text style={styles.subtitle}>
             {step === "upload"
-              ? "Ders programını yükle, yapay zeka halletsin."
-              : "Çalışma saatlerini gir, takvime dökelim."}
+              ? "Upload your schedule, let AI handle it."
+              : "Enter your working hours to build your calendar."}
           </Text>
+
           {step === "upload" ? (
             <TouchableOpacity style={styles.uploadBox} onPress={handleUpload}>
               <Ionicons
@@ -258,36 +316,92 @@ export default function PlanTimeScreen() {
                 color={theme.primary}
                 style={{ marginBottom: 10 }}
               />
-              <Text style={styles.uploadText}>Galeriden Seç</Text>
+              <Text style={styles.uploadText}>Choose from Gallery</Text>
             </TouchableOpacity>
           ) : (
-            <View style={styles.timeInputContainer}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Başlangıç</Text>
-                <TextInput
-                  style={styles.input}
-                  value={workStart}
-                  onChangeText={setWorkStart}
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                />
+            <View>
+              <View style={styles.timeInputContainer}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Start</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.timePickerBtn,
+                      showStartPicker && { borderColor: theme.primary },
+                    ]}
+                    onPress={() => {
+                      setShowStartPicker(true);
+                      setShowEndPicker(false);
+                    }}
+                  >
+                    <Text style={styles.timePickerText}>
+                      {workStart.toLocaleTimeString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.dashText}>-</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>End</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.timePickerBtn,
+                      showEndPicker && { borderColor: theme.primary },
+                    ]}
+                    onPress={() => {
+                      setShowEndPicker(true);
+                      setShowStartPicker(false);
+                    }}
+                  >
+                    <Text style={styles.timePickerText}>
+                      {workEnd.toLocaleTimeString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <Text style={styles.dashText}>-</Text>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Bitiş</Text>
-                <TextInput
-                  style={styles.input}
-                  value={workEnd}
-                  onChangeText={setWorkEnd}
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                />
-              </View>
+
+              {(showStartPicker || showEndPicker) && (
+                <View style={styles.pickerContainer}>
+                  <View style={styles.pickerHeader}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setShowStartPicker(false);
+                        setShowEndPicker(false);
+                      }}
+                    >
+                      <Text style={styles.pickerCloseText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    value={showStartPicker ? workStart : workEnd}
+                    mode="time"
+                    is24Hour={true}
+                    display="spinner"
+                    onChange={(event, date) => {
+                      if (Platform.OS === "android") {
+                        setShowStartPicker(false);
+                        setShowEndPicker(false);
+                      }
+                      if (date) {
+                        if (showStartPicker) setWorkStart(date);
+                        if (showEndPicker) setWorkEnd(date);
+                      }
+                    }}
+                  />
+                </View>
+              )}
             </View>
           )}
+
           {step === "manual_time" && (
             <TouchableOpacity style={styles.button} onPress={applyManualHours}>
-              <Text style={styles.buttonText}>Tabloyu Oluştur</Text>
+              <Text style={styles.buttonText}>Create Schedule</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -297,10 +411,10 @@ export default function PlanTimeScreen() {
             style={styles.backButton}
           >
             <Ionicons name="arrow-back" size={20} color={theme.textSecondary} />
-            <Text style={styles.backText}>Geri Dön</Text>
+            <Text style={styles.backText}>Go Back</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
-            <Text style={styles.skipText}>Şimdilik Atla</Text>
+            <Text style={styles.skipText}>Skip for now</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -308,7 +422,7 @@ export default function PlanTimeScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.headerArea}>
         <TouchableOpacity
           onPress={() => setStep("type_select")}
@@ -316,25 +430,29 @@ export default function PlanTimeScreen() {
         >
           <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Haftalık Programını Düzenle</Text>
+        <Text style={styles.headerTitle}>Edit Weekly Schedule</Text>
       </View>
 
       <View style={styles.tabsContainer}>
-        {DAYS.map((day) => {
-          const isActive = activeTab === day.index;
-          return (
-            <TouchableOpacity
-              key={day.label}
-              style={[styles.tab, isActive && styles.activeTab]}
-              onPress={() => setActiveTab(day.index)}
+        {DAYS.map((day) => (
+          <TouchableOpacity
+            key={day.label}
+            style={[styles.tab, activeTab === day.index && styles.activeTab]}
+            onPress={() => setActiveTab(day.index)}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === day.index && styles.activeTabText,
+              ]}
             >
-              <Text style={[styles.tabText, isActive && styles.activeTabText]}>
-                {day.label}
-              </Text>
-              {isActive && <View style={styles.activeTabIndicator} />}
-            </TouchableOpacity>
-          );
-        })}
+              {day.label}
+            </Text>
+            {activeTab === day.index && (
+              <View style={styles.activeTabIndicator} />
+            )}
+          </TouchableOpacity>
+        ))}
       </View>
 
       <ScrollView
@@ -343,8 +461,6 @@ export default function PlanTimeScreen() {
       >
         {HOURS.map((hour) => {
           const slot = getSlotForHour(hour);
-          const isMusait = slot?.metadata?.type === "Müsait";
-
           return (
             <View style={styles.timelineRow} key={hour}>
               <Text style={styles.timeLabel}>
@@ -355,60 +471,32 @@ export default function PlanTimeScreen() {
                   <TouchableOpacity
                     style={[
                       styles.card,
-                      isMusait
-                        ? styles.cardMusait
-                        : {
-                            backgroundColor:
-                              slot.metadata?.color || theme.primary,
-                          },
+                      {
+                        backgroundColor: slot.metadata?.color || theme.primary,
+                      },
                     ]}
-                    onPress={() => toggleAvailable(hour)}
+                    onPress={() => handleSlotPress(slot)}
                     activeOpacity={0.8}
                   >
                     <Ionicons
-                      name={
-                        isMusait
-                          ? "checkmark-circle"
-                          : slot.metadata?.type === "İş"
-                            ? "briefcase"
-                            : "book"
-                      }
+                      name="bookmark"
                       size={20}
-                      color={isMusait ? "#10B981" : "#FFF"}
+                      color="#FFF"
                       style={{ marginRight: 10 }}
                     />
                     <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.cardType,
-                          isMusait ? { color: "#10B981" } : {},
-                        ]}
-                      >
-                        {slot.metadata?.type
-                          ? String(slot.metadata.type)
-                          : "Etkinlik"}
+                      <Text style={[styles.cardType, { color: "#FFF" }]}>
+                        {slot.metadata?.type || "Event"}
                       </Text>
-
-                      {isMusait ? null : (
-                        <View>
-                          <Text style={styles.cardTitle} numberOfLines={1}>
-                            {slot.metadata?.title
-                              ? String(slot.metadata.title)
-                              : "Detay belirtilmedi"}
-                          </Text>
-                          {!!slot.metadata?.location && (
-                            <Text style={styles.cardLocation} numberOfLines={1}>
-                              📍 {String(slot.metadata.location)}
-                            </Text>
-                          )}
-                        </View>
-                      )}
+                      <Text style={styles.cardTitle} numberOfLines={1}>
+                        {slot.metadata?.title}
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
                     style={styles.emptySlot}
-                    onPress={() => toggleAvailable(hour)}
+                    onPress={() => handleAddPress(hour)}
                   >
                     <Ionicons
                       name="add"
@@ -426,7 +514,7 @@ export default function PlanTimeScreen() {
 
       <View style={styles.footerFloat}>
         <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
-          <Text style={styles.confirmBtnText}>Profili Güncelle ve Bitir</Text>
+          <Text style={styles.confirmBtnText}>Save Profile & Finish</Text>
           <Ionicons
             name="arrow-forward"
             size={20}
@@ -436,80 +524,133 @@ export default function PlanTimeScreen() {
         </TouchableOpacity>
       </View>
 
-      <Modal visible={!!selectedSlot} transparent animationType="slide">
+      <Modal visible={isAddModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View
-              style={[
-                styles.modalHeaderLine,
-                {
-                  backgroundColor:
-                    selectedSlot?.metadata?.color || theme.primary,
-                },
-              ]}
+            <Text style={styles.modalTitle}>New Event</Text>
+            <TextInput
+              style={styles.inputModal}
+              placeholder="Event name..."
+              placeholderTextColor={theme.textSecondary}
+              value={newEntry.title}
+              onChangeText={(t) => setNewEntry({ ...newEntry, title: t })}
             />
-            <View style={styles.modalHeader}>
-              <View style={styles.modalBadge}>
-                <Text style={styles.modalBadgeText}>
-                  {selectedSlot?.metadata?.type
-                    ? String(selectedSlot.metadata.type)
-                    : "Etkinlik"}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setSelectedSlot(null)}>
-                <Ionicons
-                  name="close-circle"
-                  size={28}
-                  color={theme.textSecondary}
-                />
+            <Text style={styles.label}>Select Category:</Text>
+            <View style={styles.categoryGrid}>
+              {CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat.label}
+                  style={[
+                    styles.catChip,
+                    newEntry.category.label === cat.label && {
+                      backgroundColor: cat.color,
+                      borderColor: cat.color,
+                    },
+                  ]}
+                  onPress={() => setNewEntry({ ...newEntry, category: cat })}
+                >
+                  <Text
+                    style={[
+                      styles.catChipText,
+                      newEntry.category.label === cat.label && {
+                        color: "#FFF",
+                      },
+                    ]}
+                  >
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setIsAddModalVisible(false)}
+              >
+                <Text style={{ color: theme.textPrimary }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={confirmAddEntry}
+              >
+                <Text style={{ color: "#FFF", fontWeight: "bold" }}>Add</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
 
-            <Text style={styles.modalTitle}>
-              {selectedSlot?.metadata?.title
-                ? String(selectedSlot.metadata.title)
-                : "Detay belirtilmedi"}
+      <Modal visible={!!selectedSlot} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                alignItems: "center",
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 4,
+                backgroundColor: theme.cardBorder,
+                borderRadius: 2,
+                marginBottom: 20,
+              }}
+            />
+            <Text
+              style={[
+                styles.modalTitle,
+                { textAlign: "center", marginBottom: 10 },
+              ]}
+            >
+              {selectedSlot?.metadata?.title}
             </Text>
-
-            {!!selectedSlot?.metadata?.location && (
-              <View style={styles.modalLocationRow}>
-                <Ionicons
-                  name="location-outline"
-                  size={20}
-                  color={theme.textSecondary}
-                />
-                <Text style={styles.modalTimeText}>
-                  {String(selectedSlot.metadata.location)}
-                </Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={styles.modalDeleteBtn}
-              onPress={() => {
-                setSchedule((prev) =>
-                  prev.filter((s) => s.slotId !== selectedSlot?.slotId),
-                );
-                setSelectedSlot(null);
+            <Text
+              style={{
+                color: theme.textSecondary,
+                textAlign: "center",
+                marginBottom: 24,
+                fontSize: 16,
               }}
             >
-              <Ionicons
-                name="trash-outline"
-                size={20}
-                color={theme.danger || "#EF4444"}
-              />
-              <Text style={styles.modalDeleteText}>Etkinliği Sil</Text>
+              Are you sure you want to delete this event from your schedule?
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalDeleteBtn, { width: "100%" }]}
+              onPress={confirmDeleteFromModal}
+            >
+              <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              <Text style={styles.modalDeleteText}>Yes, Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.cancelBtn, { width: "100%", marginTop: 8 }]}
+              onPress={() => setSelectedSlot(null)}
+            >
+              <Text
+                style={{
+                  color: theme.textPrimary,
+                  textAlign: "center",
+                  fontWeight: "bold",
+                  fontSize: 16,
+                }}
+              >
+                Cancel
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
-// Stiller Tema sistemine (ThemeColors) entegre edildi!
 const createStyles = (theme: ThemeColors) =>
   StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: theme.background },
     container: { flex: 1, backgroundColor: theme.background },
     content: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
     title: {
@@ -552,23 +693,28 @@ const createStyles = (theme: ThemeColors) =>
       marginBottom: 20,
     },
     uploadText: { fontSize: 18, color: theme.primary, fontWeight: "bold" },
+
     timeInputContainer: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginBottom: 30,
+      marginBottom: 20,
     },
     inputGroup: { flex: 1 },
     inputLabel: { color: theme.textSecondary, marginBottom: 8, fontSize: 14 },
-    input: {
+    timePickerBtn: {
       backgroundColor: theme.card,
-      color: theme.textPrimary,
       padding: 16,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: theme.cardBorder,
-      fontSize: 16,
-      textAlign: "center",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    timePickerText: {
+      color: theme.textPrimary,
+      fontSize: 18,
+      fontWeight: "bold",
     },
     dashText: {
       color: theme.textSecondary,
@@ -576,6 +722,25 @@ const createStyles = (theme: ThemeColors) =>
       marginHorizontal: 15,
       marginTop: 20,
     },
+
+    pickerContainer: {
+      backgroundColor: theme.card,
+      borderRadius: 16,
+      marginBottom: 20,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
+    },
+    pickerHeader: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      padding: 12,
+      backgroundColor: theme.background,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.cardBorder,
+    },
+    pickerCloseText: { color: theme.primary, fontWeight: "bold", fontSize: 16 },
+
     button: {
       backgroundColor: theme.primary,
       height: 52,
@@ -609,7 +774,6 @@ const createStyles = (theme: ThemeColors) =>
       fontWeight: "600",
       textDecorationLine: "underline",
     },
-
     headerArea: {
       flexDirection: "row",
       alignItems: "center",
@@ -626,6 +790,7 @@ const createStyles = (theme: ThemeColors) =>
       borderBottomWidth: 1,
       borderBottomColor: theme.cardBorder,
       paddingBottom: 10,
+      paddingTop: 10,
     },
     tab: { alignItems: "center", paddingVertical: 10, width: 45 },
     activeTab: {},
@@ -639,7 +804,6 @@ const createStyles = (theme: ThemeColors) =>
       position: "absolute",
       bottom: -10,
     },
-
     timelineContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
     timelineRow: { flexDirection: "row", marginBottom: 15, minHeight: 70 },
     timeLabel: {
@@ -657,21 +821,8 @@ const createStyles = (theme: ThemeColors) =>
       borderRadius: 16,
       height: 75,
     },
-    cardType: { color: "#FFF", fontSize: 15, fontWeight: "bold" },
-    cardTitle: { color: "rgba(255,255,255,0.9)", fontSize: 13, marginTop: 2 },
-    cardLocation: {
-      color: "rgba(255,255,255,0.7)",
-      fontSize: 11,
-      marginTop: 4,
-      fontWeight: "500",
-    },
-
-    cardMusait: {
-      backgroundColor: "transparent",
-      borderWidth: 2,
-      borderColor: "#10B981",
-      borderStyle: "dashed",
-    },
+    cardType: { fontSize: 13, fontWeight: "bold", opacity: 0.9 },
+    cardTitle: { color: "#FFF", fontSize: 15, fontWeight: "600", marginTop: 2 },
     emptySlot: {
       flex: 1,
       backgroundColor: theme.card,
@@ -679,8 +830,10 @@ const createStyles = (theme: ThemeColors) =>
       justifyContent: "center",
       alignItems: "center",
       height: 75,
+      borderStyle: "dashed",
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
     },
-
     footerFloat: { position: "absolute", bottom: 30, left: 20, right: 20 },
     confirmBtn: {
       backgroundColor: theme.primary,
@@ -696,60 +849,68 @@ const createStyles = (theme: ThemeColors) =>
       elevation: 8,
     },
     confirmBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
-
     modalOverlay: {
       flex: 1,
       backgroundColor: "rgba(0, 0, 0, 0.7)",
-      justifyContent: "flex-end",
+      justifyContent: "center",
+      padding: 20,
     },
     modalContent: {
-      backgroundColor: theme.background,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
+      backgroundColor: theme.card,
+      borderRadius: 24,
       padding: 24,
-      paddingBottom: Platform.OS === "ios" ? 40 : 24,
-      elevation: 10,
-    },
-    modalHeaderLine: {
-      width: 60,
-      height: 5,
-      borderRadius: 3,
-      alignSelf: "center",
-      marginBottom: 20,
-    },
-    modalHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 16,
-    },
-    modalBadge: {
-      backgroundColor: "rgba(100,100,100,0.2)",
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 20,
-    },
-    modalBadgeText: {
-      color: theme.textPrimary,
-      fontSize: 14,
-      fontWeight: "bold",
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
     },
     modalTitle: {
-      color: theme.textPrimary,
-      fontSize: 24,
+      fontSize: 20,
       fontWeight: "800",
-      marginBottom: 20,
+      color: theme.textPrimary,
+      marginBottom: 16,
     },
-    modalLocationRow: {
+    inputModal: {
+      backgroundColor: theme.background,
+      color: theme.textPrimary,
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
+    },
+    label: { color: theme.textPrimary, fontWeight: "bold", marginBottom: 12 },
+    categoryGrid: {
       flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 30,
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 24,
     },
-    modalTimeText: {
+    catChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.cardBorder,
+    },
+    catChipText: {
+      fontSize: 12,
+      fontWeight: "bold",
       color: theme.textSecondary,
-      fontSize: 16,
-      marginLeft: 8,
-      fontWeight: "500",
+    },
+    modalActions: { flexDirection: "row", gap: 12 },
+    cancelBtn: {
+      flex: 1,
+      height: 50,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 12,
+    },
+    saveBtn: {
+      flex: 2,
+      backgroundColor: theme.primary,
+      height: 50,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 12,
     },
     modalDeleteBtn: {
       flexDirection: "row",
@@ -758,12 +919,10 @@ const createStyles = (theme: ThemeColors) =>
       backgroundColor: "rgba(239, 68, 68, 0.1)",
       padding: 16,
       borderRadius: 16,
-      borderWidth: 1,
-      borderColor: "rgba(239, 68, 68, 0.3)",
-      marginBottom: 20,
+      marginBottom: 12,
     },
     modalDeleteText: {
-      color: theme.danger || "#EF4444",
+      color: "#EF4444",
       fontSize: 16,
       fontWeight: "bold",
       marginLeft: 8,
