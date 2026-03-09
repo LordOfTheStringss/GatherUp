@@ -1,220 +1,266 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { UserController } from "../../src/controllers/UserController";
-import { FriendshipManager } from "../../src/core/identity/FriendshipManager";
-import { GamificationManager } from "../../src/core/identity/GamificationManager";
-import { UserManager } from "../../src/core/identity/UserManager";
 import { useUIStore } from "../../src/store/uiStore";
 import { ThemeColors } from "../../src/theme/colors";
 import { useTheme } from "../../src/theme/useTheme";
 
-const ALL_CATEGORIES = {
-  Spor: [
-    "Voleybol",
-    "Basketbol",
-    "Futbol",
-    "Tenis",
-    "Yüzme",
-    "Koşu",
-    "Yoga",
-    "Pilates",
-    "Fitness",
-    "Kaykay",
-    "Bisiklet",
-    "Okçuluk",
-    "Dağcılık",
-    "Boks",
-    "Masa Tenisi",
-  ],
-  "Teknoloji & Bilim": [
-    "Yazılım",
-    "Yapay Zeka",
-    "Veri Bilimi",
-    "Siber Güvenlik",
-    "Robotik",
-    "Oyun Geliştirme",
-    "Blockchain",
-    "Astronomi",
-    "Elektronik",
-  ],
-  "Sanat & Kültür": [
-    "Tiyatro",
-    "Sinema",
-    "Konser",
-    "Dans",
-    "Resim",
-    "Heykel",
-    "Edebiyat",
-    "Fotoğrafçılık",
-    "Sergi",
-    "Stand-up",
-    "Müzeler",
-    "Opera",
-  ],
-  "Hobiler & Yaşam Tarzı": [
-    "Kamp",
-    "Satranç",
-    "Kitap",
-    "Yemek",
-    "Gastronomi",
-    "Oyun",
-    "E-spor",
-    "Bahçecilik",
-    "Seyahat",
-    "Yabancı Dil",
-    "Koleksiyon",
-    "Müzik Enstrümanı",
-  ],
-  "Sosyal Etkinlikler": [
-    "Gönüllülük",
-    "Networking",
-    "Kariyer Günleri",
-    "Workshop",
-  ],
-};
-
-// DI stub
-const userController = new UserController(
-  UserManager.getInstance(),
-  new FriendshipManager({} as any),
-  new GamificationManager(),
-);
+// DİKKAT: 54 MADDELİK TAM LİSTE BURAYA DA EKLENDİ!
+const INTEREST_CATEGORIES = [
+  {
+    title: "Sports",
+    icon: "fitness",
+    items: [
+      "Volleyball",
+      "Basketball",
+      "Football",
+      "Tennis",
+      "Swimming",
+      "Running",
+      "Yoga",
+      "Pilates",
+      "Fitness",
+      "Skateboarding",
+      "Cycling",
+      "Archery",
+      "Mountaineering",
+      "Boxing",
+      "Table Tennis",
+    ],
+  },
+  {
+    title: "Tech & Science",
+    icon: "flask",
+    items: [
+      "Software",
+      "AI",
+      "Data Science",
+      "Cyber Security",
+      "Robotics",
+      "Game Dev",
+      "Blockchain",
+      "Astronomy",
+      "Electronics",
+    ],
+  },
+  {
+    title: "Arts & Culture",
+    icon: "color-palette",
+    items: [
+      "Theater",
+      "Cinema",
+      "Concerts",
+      "Dance",
+      "Painting",
+      "Sculpture",
+      "Literature",
+      "Photography",
+      "Exhibitions",
+      "Stand-up",
+      "Museums",
+      "Opera",
+    ],
+  },
+  {
+    title: "Hobbies & Lifestyle",
+    icon: "camera",
+    items: [
+      "Camping",
+      "Chess",
+      "Reading",
+      "Cooking",
+      "Gastronomy",
+      "E-sports",
+      "Gardening",
+      "Traveling",
+      "Languages",
+      "Collecting",
+      "Guitar",
+      "Piano",
+      "Violin",
+    ],
+  },
+  {
+    title: "Social Events",
+    icon: "people",
+    items: [
+      "Volunteering",
+      "Networking",
+      "Career Fairs",
+      "Workshops",
+      "Board Games",
+    ],
+  },
+];
 
 export default function EditInterestsScreen() {
   const theme = useTheme();
   const styles = createStyles(theme);
   const { showToast, setGlobalLoading } = useUIStore();
-  const [selectedInterests, setSelectedInterests] = useState<Set<string>>(
-    new Set(),
-  );
-  const [hasChanges, setHasChanges] = useState(false);
 
-  useEffect(() => {
-    const fetchCurrentInterests = async () => {
-      setGlobalLoading(true);
-      try {
-        const res = await userController.getMyProfile();
-        if (res.status === 200 && res.data && res.data.interests) {
-          setSelectedInterests(new Set(res.data.interests));
+  const [selected, setSelected] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // DİKKAT: ÇÖKME HATASI GİDERİLDİ (FriendshipManager eklendi)
+  useFocusEffect(
+    useCallback(() => {
+      const loadInterests = async () => {
+        setIsLoading(true);
+        try {
+          const { UserController } =
+            await import("../../src/controllers/UserController");
+          const { UserManager } =
+            await import("../../src/core/identity/UserManager");
+          const { FriendshipManager } =
+            await import("../../src/core/identity/FriendshipManager");
+
+          const controller = new UserController(
+            UserManager.getInstance(),
+            new FriendshipManager({} as any),
+            {} as any,
+          );
+          const res = await controller.getMyProfile();
+
+          if (res.status === 200 && res.data?.interests) {
+            setSelected(res.data.interests);
+          }
+        } catch (e) {
+          console.error("Failed to load interests:", e);
+        } finally {
+          setIsLoading(false);
         }
-      } catch (e) {
-        console.error("Failed to load interests:", e);
-        showToast("Failed to load your interests.", "error");
-      } finally {
-        setGlobalLoading(false);
-      }
-    };
-    fetchCurrentInterests();
-  }, []);
+      };
+      loadInterests();
+    }, []),
+  );
 
-  const toggleInterest = (interest: string) => {
-    setSelectedInterests((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(interest)) {
-        newSet.delete(interest);
-      } else {
-        newSet.add(interest);
-      }
-      return newSet;
-    });
-    setHasChanges(true);
+  const toggleInterest = (item: string) => {
+    if (selected.includes(item)) {
+      setSelected(selected.filter((i) => i !== item));
+    } else {
+      setSelected([...selected, item]);
+    }
   };
 
   const handleSave = async () => {
     setGlobalLoading(true);
     try {
-      await userController.updateProfile(undefined, {
-        interests: Array.from(selectedInterests),
-      });
-      showToast("Interests updated successfully!", "success");
-      setHasChanges(false);
-      // Explicitly route to profile instead of router.back() which might pop to index
-      router.push("/(tabs)/profile");
-    } catch (error) {
-      console.error("Save error:", error);
-      showToast("Failed to save interests.", "error");
+      const { UserController } =
+        await import("../../src/controllers/UserController");
+      const { UserManager } =
+        await import("../../src/core/identity/UserManager");
+      const { FriendshipManager } =
+        await import("../../src/core/identity/FriendshipManager");
+
+      const controller = new UserController(
+        UserManager.getInstance(),
+        new FriendshipManager({} as any),
+        {} as any,
+      );
+
+      await controller.updateProfile(undefined, { interests: selected });
+      showToast("Interests updated!", "success");
+
+      router.replace("/profile");
+    } catch (e) {
+      showToast("Failed to save.", "error");
     } finally {
       setGlobalLoading(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.safeArea,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color={theme.primary} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={28} color={theme.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.replace("/profile")}
+          style={styles.backBtn}
+        >
+          <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Manage Interests</Text>
-        {hasChanges ? (
-          <TouchableOpacity onPress={handleSave} style={styles.saveBtn}>
-            <Text style={styles.saveBtnText}>Save</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 60 }} />
-        )}
+        <Text style={styles.headerTitle}>Edit Interests</Text>
+        <View style={{ width: 28 }} />
+      </View>
+
+      <View style={styles.topBar}>
+        <Text style={styles.subtitle}>Selected: {selected.length}</Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.infoBox}>
-          <Ionicons
-            name="information-circle-outline"
-            size={24}
-            color={theme.primary}
-          />
-          <Text style={styles.infoText}>
-            Your interests help us match you with events you will love. Select
-            all that apply!
-          </Text>
-        </View>
-
-        {Object.entries(ALL_CATEGORIES).map(([categoryName, items]) => (
-          <View key={categoryName} style={styles.categorySection}>
-            <Text style={styles.categoryTitle}>{categoryName}</Text>
+        {INTEREST_CATEGORIES.map((category) => (
+          <View key={category.title} style={styles.categorySection}>
+            <View style={styles.categoryHeader}>
+              <Ionicons
+                name={category.icon as any}
+                size={20}
+                color={theme.textPrimary}
+              />
+              <Text style={styles.categoryTitle}>{category.title}</Text>
+            </View>
             <View style={styles.chipsContainer}>
-              {items.map((item) => {
-                const isSelected = selectedInterests.has(item);
+              {category.items.map((item) => {
+                const isSelected = selected.includes(item);
                 return (
                   <TouchableOpacity
                     key={item}
-                    style={[styles.chip, isSelected && styles.chipSelected]}
+                    style={[
+                      styles.chip,
+                      isSelected && {
+                        backgroundColor: theme.primary,
+                        borderColor: theme.primary,
+                      },
+                    ]}
                     onPress={() => toggleInterest(item)}
                     activeOpacity={0.7}
                   >
                     <Text
-                      style={[
-                        styles.chipText,
-                        isSelected && styles.chipTextSelected,
-                      ]}
+                      style={[styles.chipText, isSelected && { color: "#FFF" }]}
                     >
                       {item}
                     </Text>
-                    {isSelected && (
-                      <Ionicons
-                        name="checkmark"
-                        size={16}
-                        color="#FFF"
-                        style={{ marginLeft: 6 }}
-                      />
-                    )}
                   </TouchableOpacity>
                 );
               })}
             </View>
           </View>
         ))}
+        <View style={{ height: 100 }} />
       </ScrollView>
+
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={styles.saveBtn}
+          onPress={handleSave}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.saveBtnText}>Save Changes</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -222,7 +268,6 @@ export default function EditInterestsScreen() {
 const createStyles = (theme: ThemeColors) =>
   StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.background },
-
     header: {
       flexDirection: "row",
       alignItems: "center",
@@ -230,62 +275,59 @@ const createStyles = (theme: ThemeColors) =>
       paddingHorizontal: 20,
       paddingTop: 10,
       paddingBottom: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.cardBorder,
     },
-    backBtn: { minHeight: 44, justifyContent: "center", width: 60 },
-    headerTitle: { fontSize: 20, fontWeight: "800", color: theme.textPrimary },
-    saveBtn: { width: 60, alignItems: "flex-end", justifyContent: "center" },
-    saveBtnText: { color: theme.primary, fontSize: 16, fontWeight: "bold" },
-
-    scrollContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
-
-    infoBox: {
-      flexDirection: "row",
-      backgroundColor: theme.primaryLight,
-      padding: 16,
-      borderRadius: 12,
-      marginBottom: 24,
-      alignItems: "center",
-    },
-    infoText: {
-      flex: 1,
-      color: theme.textPrimary,
-      marginLeft: 12,
-      fontSize: 14,
-      lineHeight: 20,
-    },
-
-    categorySection: { marginBottom: 32 },
-    categoryTitle: {
-      fontSize: 18,
+    backBtn: { minHeight: 44, justifyContent: "center" },
+    headerTitle: {
+      fontSize: 20,
       fontWeight: "800",
       color: theme.textPrimary,
-      marginBottom: 16,
       letterSpacing: 0.5,
     },
 
-    chipsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-    chip: {
+    topBar: { paddingHorizontal: 24, paddingBottom: 16 },
+    subtitle: { fontSize: 14, color: theme.textSecondary, fontWeight: "600" },
+
+    scrollView: { flex: 1, paddingHorizontal: 20 },
+    categorySection: { marginBottom: 32 },
+    categoryHeader: {
       flexDirection: "row",
       alignItems: "center",
+      marginBottom: 16,
+      gap: 8,
+    },
+    categoryTitle: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: theme.textPrimary,
+    },
+    chipsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    chip: {
       paddingHorizontal: 16,
       paddingVertical: 10,
       borderRadius: 20,
       borderWidth: 1,
-      backgroundColor: theme.inputBg,
-      borderColor: theme.inputBorder,
+      borderColor: theme.cardBorder,
+      backgroundColor: theme.card,
     },
-    chipSelected: {
-      backgroundColor: theme.primary,
-      borderColor: theme.primary,
-      shadowColor: theme.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
-      elevation: 4,
-    },
+    chipText: { fontSize: 14, fontWeight: "600", color: theme.textPrimary },
 
-    chipText: { fontSize: 14, fontWeight: "600", color: theme.textSecondary },
-    chipTextSelected: { color: "#FFFFFF", fontWeight: "800" },
+    footer: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      padding: 24,
+      backgroundColor: theme.background,
+      borderTopWidth: 1,
+      borderTopColor: theme.cardBorder,
+    },
+    saveBtn: {
+      backgroundColor: theme.primary,
+      flexDirection: "row",
+      height: 56,
+      borderRadius: 16,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    saveBtnText: { color: "#FFF", fontSize: 16, fontWeight: "bold" },
   });

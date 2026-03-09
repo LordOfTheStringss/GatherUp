@@ -32,14 +32,13 @@ const scheduleController = new ScheduleController(
   new OCRProcessor(),
 );
 
-// KATEGORİLER İNGİLİZCE
 const CATEGORIES = [
   { label: "Class", color: "#E11D48", icon: "book" },
   { label: "Work", color: "#F59E0B", icon: "briefcase" },
   { label: "Sports", color: "#3B82F6", icon: "fitness" },
   { label: "Tech", color: "#8B5CF6", icon: "code-working" },
   { label: "Art", color: "#EC4899", icon: "color-palette" },
-  { label: "Hobby", color: "#8310b9", icon: "heart" },
+  { label: "Hobby", color: "#8910b9", icon: "heart" },
   { label: "Social", color: "#10B981", icon: "people" },
 ];
 
@@ -82,6 +81,26 @@ export default function PlanTimeScreen() {
   );
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+
+  const formatTimeStr = (dateStr: Date | string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  };
+
+  // DİKKAT: SKIP YAPILDIĞINDA ESKİ 8-17 HATASINI ÖNLEYEN KOD!
+  const handleSkip = async () => {
+    setGlobalLoading(true);
+    try {
+      // Takvimi sıfırlar (Geçmişte kalmış 8-17 iş saati bug'ını yok eder)
+      await scheduleController.confirmSchedule([], "user-123");
+    } catch (e) {}
+    setGlobalLoading(false);
+    router.replace("/(tabs)");
+  };
 
   const applyManualHours = () => {
     const startInt = workStart.getHours();
@@ -285,11 +304,8 @@ export default function PlanTimeScreen() {
               color={theme.textSecondary}
             />
           </TouchableOpacity>
-        </View>
-        <View style={styles.bottomNav}>
-          <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
-            <Text style={styles.skipText}>Skip for now</Text>
-          </TouchableOpacity>
+
+          {/* DİKKAT: SKIP BUTONU BURADAN KALDIRILDI! ARTIK SEÇİM YAPMAK ZORUNLU. */}
         </View>
       </View>
     );
@@ -413,7 +429,8 @@ export default function PlanTimeScreen() {
             <Ionicons name="arrow-back" size={20} color={theme.textSecondary} />
             <Text style={styles.backText}>Go Back</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
+          {/* DİKKAT: SKIP BUTONU BURAYA ALINDI! VE HATAYI ÇÖZMEK İÇİN handleSkip FONKSİYONUNA BAĞLANDI */}
+          <TouchableOpacity onPress={handleSkip}>
             <Text style={styles.skipText}>Skip for now</Text>
           </TouchableOpacity>
         </View>
@@ -421,6 +438,7 @@ export default function PlanTimeScreen() {
     );
   }
 
+  // Takvim (calendar_view) kısmı aynen korunuyor...
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.headerArea}>
@@ -461,6 +479,9 @@ export default function PlanTimeScreen() {
       >
         {HOURS.map((hour) => {
           const slot = getSlotForHour(hour);
+          const isAvailable =
+            slot?.metadata?.type === "Available" ||
+            slot?.metadata?.type === "Müsait";
           return (
             <View style={styles.timelineRow} key={hour}>
               <Text style={styles.timeLabel}>
@@ -471,26 +492,38 @@ export default function PlanTimeScreen() {
                   <TouchableOpacity
                     style={[
                       styles.card,
-                      {
-                        backgroundColor: slot.metadata?.color || theme.primary,
-                      },
+                      isAvailable
+                        ? styles.cardAvailable
+                        : {
+                            backgroundColor:
+                              slot.metadata?.color || theme.primary,
+                          },
                     ]}
                     onPress={() => handleSlotPress(slot)}
                     activeOpacity={0.8}
                   >
                     <Ionicons
-                      name="bookmark"
+                      name={isAvailable ? "checkmark-circle" : "bookmark"}
                       size={20}
-                      color="#FFF"
+                      color={isAvailable ? "#10B981" : "#FFF"}
                       style={{ marginRight: 10 }}
                     />
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.cardType, { color: "#FFF" }]}>
-                        {slot.metadata?.type || "Event"}
+                      <Text
+                        style={[
+                          styles.cardType,
+                          { color: isAvailable ? "#10B981" : "#FFF" },
+                        ]}
+                      >
+                        {isAvailable
+                          ? "Available"
+                          : slot.metadata?.type || "Event"}
                       </Text>
-                      <Text style={styles.cardTitle} numberOfLines={1}>
-                        {slot.metadata?.title}
-                      </Text>
+                      {!isAvailable && (
+                        <Text style={styles.cardTitle} numberOfLines={1}>
+                          {slot.metadata?.title}
+                        </Text>
+                      )}
                     </View>
                   </TouchableOpacity>
                 ) : (
@@ -526,8 +559,22 @@ export default function PlanTimeScreen() {
 
       <Modal visible={isAddModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setIsAddModalVisible(false)}
+          />
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>New Event</Text>
+            <View style={styles.modalTopHeader}>
+              <Text style={styles.modalTitle}>
+                New Event for {newEntry.hour}:00
+              </Text>
+              <TouchableOpacity
+                onPress={() => setIsAddModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={styles.inputModal}
               placeholder="Event name..."
@@ -582,6 +629,10 @@ export default function PlanTimeScreen() {
 
       <Modal visible={!!selectedSlot} transparent animationType="slide">
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setSelectedSlot(null)}
+          />
           <View
             style={[
               styles.modalContent,
@@ -601,14 +652,40 @@ export default function PlanTimeScreen() {
                 marginBottom: 20,
               }}
             />
-            <Text
-              style={[
-                styles.modalTitle,
-                { textAlign: "center", marginBottom: 10 },
-              ]}
-            >
-              {selectedSlot?.metadata?.title}
-            </Text>
+            <View style={styles.modalTopHeaderCenter}>
+              <View style={{ width: 24 }} />
+              <Text
+                style={[
+                  styles.modalTitle,
+                  { textAlign: "center", marginBottom: 5 },
+                ]}
+              >
+                {selectedSlot?.metadata?.title}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSelectedSlot(null)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={26}
+                  color={theme.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+            {selectedSlot && (
+              <Text
+                style={{
+                  color: theme.primary,
+                  fontWeight: "800",
+                  marginBottom: 15,
+                  fontSize: 16,
+                }}
+              >
+                {formatTimeStr(selectedSlot.startTime)} -{" "}
+                {formatTimeStr(selectedSlot.endTime)}
+              </Text>
+            )}
             <Text
               style={{
                 color: theme.textSecondary,
@@ -821,6 +898,12 @@ const createStyles = (theme: ThemeColors) =>
       borderRadius: 16,
       height: 75,
     },
+    cardAvailable: {
+      backgroundColor: "transparent",
+      borderWidth: 2,
+      borderColor: "#10B981",
+      borderStyle: "dashed",
+    },
     cardType: { fontSize: 13, fontWeight: "bold", opacity: 0.9 },
     cardTitle: { color: "#FFF", fontSize: 15, fontWeight: "600", marginTop: 2 },
     emptySlot: {
@@ -862,12 +945,20 @@ const createStyles = (theme: ThemeColors) =>
       borderWidth: 1,
       borderColor: theme.cardBorder,
     },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: "800",
-      color: theme.textPrimary,
+    modalTopHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
       marginBottom: 16,
     },
+    modalTopHeaderCenter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      width: "100%",
+      marginBottom: 5,
+    },
+    modalTitle: { fontSize: 20, fontWeight: "800", color: theme.textPrimary },
     inputModal: {
       backgroundColor: theme.background,
       color: theme.textPrimary,

@@ -32,18 +32,16 @@ const scheduleController = new ScheduleController(
   new OCRProcessor(),
 );
 
-// İNGİLİZCE KATEGORİLER
 const CATEGORIES = [
   { label: "Class", color: "#E11D48", icon: "book" },
   { label: "Work", color: "#F59E0B", icon: "briefcase" },
   { label: "Sports", color: "#3B82F6", icon: "fitness" },
   { label: "Tech", color: "#8B5CF6", icon: "code-working" },
   { label: "Art", color: "#EC4899", icon: "color-palette" },
-  { label: "Hobby", color: "#8310b9", icon: "heart" },
+  { label: "Hobby", color: "#8910b9", icon: "heart" },
   { label: "Social", color: "#10B981", icon: "people" },
 ];
 
-// İNGİLİZCE GÜNLER
 const DAYS = [
   { label: "Mon", index: 1 },
   { label: "Tue", index: 2 },
@@ -83,6 +81,15 @@ export default function OCRScheduleScreen() {
   );
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+
+  const formatTimeStr = (dateStr: Date | string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -190,10 +197,7 @@ export default function OCRScheduleScreen() {
 
       setSchedule((prev) => [...prev, ...coloredSlots]);
       setStep("calendar_view");
-      showToast(
-        "Schedule uploaded! You can tap empty slots to add events.",
-        "success",
-      );
+      showToast("Schedule uploaded! Tap empty space to add events.", "success");
     } catch (e: any) {
       showToast(e.message || "Upload failed.", "error");
     } finally {
@@ -201,9 +205,7 @@ export default function OCRScheduleScreen() {
     }
   };
 
-  const handleSlotPress = (slot: TimeSlot) => {
-    setSelectedSlot(slot);
-  };
+  const handleSlotPress = (slot: TimeSlot) => setSelectedSlot(slot);
 
   const handleAddPress = (hourInt: number) => {
     setNewEntry({ ...newEntry, hour: hourInt, title: "" });
@@ -280,13 +282,22 @@ export default function OCRScheduleScreen() {
           <View style={{ width: 28 }} />
         </View>
         <ScrollView contentContainerStyle={styles.content}>
+          {/* DİKKAT: TASARIM İLK EKRAN (ONBOARDING) İLE AYNI HALE GETİRİLDİ */}
           <TouchableOpacity style={styles.typeButton} onPress={handleUpload}>
             <View style={styles.typeIconContainer}>
-              <Ionicons name="camera" size={24} color={theme.primary} />
+              <Text style={{ fontSize: 24 }}>🎓</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.typeTitle}>Upload Class Schedule (OCR)</Text>
+              <Text style={styles.typeTitle}>I am a Student</Text>
+              <Text style={styles.typeDesc}>
+                Upload your class schedule (OCR).
+              </Text>
             </View>
+            <Ionicons
+              name="chevron-forward"
+              size={24}
+              color={theme.textSecondary}
+            />
           </TouchableOpacity>
 
           <View
@@ -296,9 +307,6 @@ export default function OCRScheduleScreen() {
               marginVertical: 20,
             }}
           />
-          <Text style={[styles.title, { fontSize: 20, marginBottom: 16 }]}>
-            Add Bulk Work Hours
-          </Text>
 
           <View>
             <View style={styles.timeInputContainer}>
@@ -443,9 +451,12 @@ export default function OCRScheduleScreen() {
                   <TouchableOpacity
                     style={[
                       styles.card,
-                      {
-                        backgroundColor: slot.metadata?.color || theme.primary,
-                      },
+                      isAvailable
+                        ? styles.cardAvailable
+                        : {
+                            backgroundColor:
+                              slot.metadata?.color || theme.primary,
+                          },
                     ]}
                     onPress={() => handleSlotPress(slot)}
                   >
@@ -495,8 +506,20 @@ export default function OCRScheduleScreen() {
 
       <Modal visible={isAddModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setIsAddModalVisible(false)}
+          />
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Plan for {newEntry.hour}:00</Text>
+            <View style={styles.modalTopHeader}>
+              <Text style={styles.modalTitle}>Plan for {newEntry.hour}:00</Text>
+              <TouchableOpacity
+                onPress={() => setIsAddModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={styles.input}
               placeholder="Event name..."
@@ -551,6 +574,10 @@ export default function OCRScheduleScreen() {
 
       <Modal visible={!!selectedSlot} transparent animationType="slide">
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setSelectedSlot(null)}
+          />
           <View
             style={[
               styles.modalContent,
@@ -570,14 +597,43 @@ export default function OCRScheduleScreen() {
                 marginBottom: 20,
               }}
             />
-            <Text
-              style={[
-                styles.modalTitle,
-                { textAlign: "center", marginBottom: 10 },
-              ]}
-            >
-              {selectedSlot?.metadata?.title}
-            </Text>
+
+            <View style={styles.modalTopHeaderCenter}>
+              <View style={{ width: 24 }} />
+              <Text
+                style={[
+                  styles.modalTitle,
+                  { textAlign: "center", marginBottom: 5 },
+                ]}
+              >
+                {selectedSlot?.metadata?.title}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSelectedSlot(null)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={26}
+                  color={theme.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {selectedSlot && (
+              <Text
+                style={{
+                  color: theme.primary,
+                  fontWeight: "800",
+                  marginBottom: 15,
+                  fontSize: 16,
+                }}
+              >
+                {formatTimeStr(selectedSlot.startTime)} -{" "}
+                {formatTimeStr(selectedSlot.endTime)}
+              </Text>
+            )}
+
             <Text
               style={{
                 color: theme.textSecondary,
@@ -653,6 +709,7 @@ const createStyles = (theme: ThemeColors) =>
       marginRight: 16,
     },
     typeTitle: { color: theme.textPrimary, fontSize: 16, fontWeight: "bold" },
+    typeDesc: { color: theme.textSecondary, fontSize: 13 },
     title: {
       fontSize: 24,
       fontWeight: "bold",
@@ -755,6 +812,12 @@ const createStyles = (theme: ThemeColors) =>
       borderRadius: 16,
       height: 75,
     },
+    cardAvailable: {
+      backgroundColor: "transparent",
+      borderWidth: 2,
+      borderColor: "#10B981",
+      borderStyle: "dashed",
+    },
     cardType: { fontSize: 12, fontWeight: "bold", opacity: 0.8 },
     cardTitle: { color: "#FFF", fontSize: 14, fontWeight: "600", marginTop: 2 },
     emptySlot: {
@@ -790,12 +853,20 @@ const createStyles = (theme: ThemeColors) =>
       borderWidth: 1,
       borderColor: theme.cardBorder,
     },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: "800",
-      color: theme.textPrimary,
+    modalTopHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
       marginBottom: 16,
     },
+    modalTopHeaderCenter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      width: "100%",
+      marginBottom: 5,
+    },
+    modalTitle: { fontSize: 20, fontWeight: "800", color: theme.textPrimary },
     input: {
       backgroundColor: theme.background,
       color: theme.textPrimary,
