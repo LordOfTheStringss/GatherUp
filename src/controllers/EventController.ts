@@ -42,7 +42,7 @@ export class EventController {
     private recommendationEngine: RecommendationEngine;
     private conflictEngine: ConflictEngine;
 
-    constructor(eventManager: EventManager, recommendationEngine: RecommendationEngine, conflictEngine: ConflictEngine) {
+    constructor(eventManager: EventManager, recommendationEngine: any, conflictEngine: ConflictEngine) {
         this.eventManager = eventManager;
         this.recommendationEngine = recommendationEngine;
         this.conflictEngine = conflictEngine;
