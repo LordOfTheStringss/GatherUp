@@ -1,50 +1,109 @@
-# Welcome to your Expo app 👋
+# Gather Up 
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Gather Up is an AI-powered, campus-exclusive social networking mobile application designed for university students. It bridges the gap between digital planning and physical gathering by utilizing intelligent algorithms to match students based on shared interests, common free time, and campus locations.
 
-## Get started
+> Developed as a senior design project at TOBB University of Economics and Technology by team **LORD OF THE STRINGS**.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+##  Key Features
 
-2. Start the app
+- 🔒 **Trusted Circle (Strict Identity):** Secure authentication restricted solely to verified university email domains (e.g., `.edu.tr`), ensuring a safe and closed campus network.
+- 📅 **Smart Availability (OCR Parsing):** Users can upload their course syllabuses. The system uses OCR to parse schedules, find common free blocks, and suggest optimal meeting times.
+- 🤖 **AI-Powered Recommendation Engine:** Utilizes Supabase `pgvector` to create embeddings of user interests and event descriptions, offering "One-Tap Suggestions" for highly relevant social gatherings.
+- 💬 **Real-Time Event Chat:** Instant, event-scoped messaging powered by Supabase WebSockets.
+- 📍 **Spatio-Temporal Heatmaps:** Analyzes campus activity trends to show users where the most popular public events are happening in real-time.
 
-   ```bash
-   npx expo start
-   ```
+---
 
-In the output, you'll find options to open the app in a
+##  Architecture & Project Structure
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+The project strictly adheres to a **Feature-based Low-Level Design (LLD)** and **Clean Architecture** principles to maintain scalability and zero-budget operational efficiency.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+The repository is structured as follows:
+```
+.
+├── app/                  # Expo Router UI views and navigation screens (Presentation layer)
+├── src/
+│   ├── core/             # Core business logic and domain models
+│   │   ├── identity/     # User management, Gamification, and Friendship (Trusted Circle) graphs
+│   │   ├── schedule/     # Time slot management, availability calculations, and OCR processing
+│   │   └── event/        # Event lifecycle management, capacities, and ChatRooms
+│   ├── controllers/      # "Thin Controllers" — API gateway between UI and background services
+│   ├── intelligence/     # AI components, matching services, and vector calculations
+│   └── infra/            # Infrastructure layer (Supabase Client, Expo Push Notifications)
+└── scripts/              # Automation scripts for DB population, testing, and AI model configs
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+##  Tech Stack
 
-To learn more about developing your project with Expo, look at the following resources:
+| Layer | Technology |
+|---|---|
+| **Frontend** | React Native, Expo Router (File-based routing) |
+| **Backend as a Service** | Supabase (PostgreSQL, Auth, Realtime, Storage, Edge Functions) |
+| **AI & Algorithms** | pgvector (Vector Similarity Search), Python (LLM setup & data generation) |
+| **Languages** | TypeScript, Python |
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
+##  Getting Started
 
-Join our community of developers creating universal apps.
+Follow these steps to run the project locally.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### Prerequisites
+
+- Node.js (v18 or newer recommended)
+- Expo CLI
+- A Supabase project account
+
+### Installation
+
+1. **Clone the repository:**
+```bash
+   git clone https://github.com/LordOfTheStringss/GatherUp.git
+   cd GatherUp
+```
+
+2. **Install dependencies:**
+```bash
+   npm install
+```
+
+3. **Configure Environment Variables:**
+
+   Create a `.env` file in the root directory and add your Supabase credentials:
+```env
+   EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+4. **Run the Application:**
+```bash
+   npx expo start
+```
+   Press `a` for Android Emulator, `i` for iOS Simulator, or scan the QR code with the **Expo Go** app.
+
+### AI & Database Setup (Optional)
+
+If you are working on the Intelligence package, use the provided scripts to initialize the vector database and LLM configurations:
+```bash
+bash setup_llm.sh
+node test_db.js
+```
+
+---
+
+##  Team: LORD OF THE STRINGS
+
+| Name |
+|---|
+| Aylin Doğan |
+| Emir Yücedağ |
+| Kerem Kazandır |
+| Zeynep Yağmur Bozdağ |
+
+---
+
+> This project is developed under the constraints of a **zero-budget architecture** and strict data privacy **(KVKK)** rules.
