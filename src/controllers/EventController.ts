@@ -9,11 +9,17 @@ import { ResponseEntity } from './ResponseEntity';
 export interface CreateEventDTO {
     title: string;
     category: string;
+    sub_category: string;
     time?: Date;
     duration?: string;
     location_lat?: number;
     location_lng?: number;
+    location_name?: string;
+    location_type?: string;
     is_private?: boolean;
+    description?: string;
+    min_capacity?: number;
+    max_capacity?: number;
 }
 
 export interface EventFilterDTO {

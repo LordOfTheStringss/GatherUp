@@ -1,4 +1,5 @@
 import { SupabaseClient } from '../../infra/SupabaseClient';
+import { VectorService } from '../../intelligence/VectorService';
 import { InvalidDomainException } from './Exceptions';
 import { User } from './User';
 
@@ -48,6 +49,15 @@ export class AuthManager {
         if (error) {
             console.error('Registration failed:', error);
             throw new Error(error.message);
+        }
+
+        // Trigger initial embedding generation
+        // After auth.signUp, the user record might take a moment to sync to public.users via triggers
+        // We call it with default/initial values
+        const status = email.endsWith('.edu.tr') ? 'öğrenci' : 'çalışan';
+        if (authData.user) {
+            VectorService.getInstance().generateUserEmbedding(authData.user.id, 0, status, [], true)
+                .catch((e: any) => console.error("Initial embedding generation failed:", e));
         }
 
         return true;
