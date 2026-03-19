@@ -4,7 +4,8 @@ import { Alert, Platform, View } from 'react-native';
 import { AuthManager } from '../../src/core/identity/AuthManager';
 import { UserManager } from '../../src/core/identity/UserManager';
 import { getLocationByLabel } from '../../src/data/locations';
-import { fetchRecommendedEvents } from '../../src/intelligence/RecommendationEngine';
+import { Location, LocationType } from '../../src/spatial/Location';
+import { RecommendationEngine } from '../../src/intelligence/RecommendationEngine';
 import { useUIStore } from '../../src/store/uiStore';
 import { useTheme } from '../../src/theme/useTheme';
 
@@ -74,7 +75,7 @@ export default function TabLayout() {
                             if (!user) throw new Error("User not logged in");
 
                             const profileData = await UserManager.getInstance().getUserProfile(user.id);
-                            
+
                             // 📍 Default location: Çankaya, Ankara
                             let userLat = 39.8667;
                             let userLon = 32.8667;
@@ -87,7 +88,14 @@ export default function TabLayout() {
                                 }
                             }
 
-                            const recommendations = await fetchRecommendedEvents(user.id, userLat, userLon);
+                            const locationObj = new Location(
+                                'user-loc',
+                                'Current Location',
+                                { latitude: userLat, longitude: userLon },
+                                LocationType.OTHER as any
+                            );
+
+                            const recommendations = await RecommendationEngine.getInstance().getOneTapSuggestion(user, locationObj);
                             setGlobalLoading(false);
 
                             if (recommendations && recommendations.length > 0) {
@@ -111,7 +119,7 @@ export default function TabLayout() {
                                     message,
                                     [
                                         { text: "Dismiss", style: "cancel" },
-                                        { text: `View Top Result`, onPress: () => router.push(`/event/${topEvent.id}`) }
+                                        { text: `View Top Result`, onPress: () => router.push(`/event/${topEvent.eventId}`) }
                                     ]
                                 );
                             } else {

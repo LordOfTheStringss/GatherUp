@@ -10,7 +10,8 @@ export enum LocationType {
     PARK = 'PARK',
     CAMPUS = 'CAMPUS',
     LIBRARY = 'LIBRARY',
-    SPORTS_HALL = 'SPORTS_HALL'
+    SPORTS_HALL = 'SPORTS_HALL',
+    OTHER = 'OTHER'
 }
 
 /**

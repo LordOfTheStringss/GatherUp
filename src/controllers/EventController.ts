@@ -42,7 +42,7 @@ export class EventController {
     private recommendationEngine: RecommendationEngine;
     private conflictEngine: ConflictEngine;
 
-    constructor(eventManager: EventManager, recommendationEngine: any, conflictEngine: ConflictEngine) {
+    constructor(eventManager: EventManager, recommendationEngine: RecommendationEngine, conflictEngine: ConflictEngine) {
         this.eventManager = eventManager;
         this.recommendationEngine = recommendationEngine;
         this.conflictEngine = conflictEngine;
@@ -112,10 +112,35 @@ export class EventController {
     }
 
     /**
-     * Calls recommendationEngine.getOneTapSuggestion().
+     * Calls recommendationEngine.fetchRecommendedEvents().
      */
     public async getSuggestions(location: GeoPoint): Promise<ResponseEntity<Event[]>> {
-        return { status: 200, data: [] };
+        try {
+            const user = await AuthManager.getInstance().getCurrentUser();
+            if (!user) throw new Error("Authentication required");
+
+            const suggestions = await this.recommendationEngine.fetchRecommendedEvents(
+                user.id,
+                location.latitude,
+                location.longitude
+            );
+            return { status: 200, data: suggestions as any };
+        } catch (error: any) {
+            return { status: 500, message: error.message || "Failed to fetch suggestions" };
+        }
+    }
+
+    /**
+     * Calls recommendationEngine.getGroupSuggestion().
+     */
+    public async getGroupAIPlan(friendsIds: string[]): Promise<ResponseEntity<any>> {
+        try {
+            // Mocking User objects for the stub
+            const plan = this.recommendationEngine.getGroupSuggestion([]);
+            return { status: 200, data: plan };
+        } catch (error: any) {
+            return { status: 500, message: error.message || "AI Planning failed" };
+        }
     }
 
     public async getParticipants(eventId: string): Promise<ResponseEntity<any[]>> {
