@@ -1,4 +1,5 @@
 import { SupabaseClient } from '../../infra/SupabaseClient';
+import { VectorService } from '../../intelligence/VectorService';
 
 /**
  * Manages core user persistence and state updates.
@@ -45,6 +46,15 @@ export class UserManager {
             console.error('Update profile error:', error);
             throw new Error(error.message);
         }
+
+        // Trigger embedding update asynchronously
+        const user = await this.getUserProfile(userId);
+        const score = user.reputation_score || 0;
+        const status = user.email ? (user.email.endsWith('.edu.tr') ? 'öğrenci' : 'çalışan') : 'çalışan';
+        const tags = user.interest_tags || [];
+
+        VectorService.getInstance().generateUserEmbedding(userId, score, status, tags, true)
+            .catch((e: any) => console.error("Failed to update user embedding after profile change:", e));
     }
 
     public async getUserProfile(userId: string): Promise<any> {

@@ -1,5 +1,6 @@
 import { CreateEventDTO, EventFilterDTO } from '../../controllers/EventController';
 import { SupabaseClient } from '../../infra/SupabaseClient';
+import { VectorService } from '../../intelligence/VectorService';
 
 /**
  * Orchestrates event lifecycle operations.
@@ -39,12 +40,17 @@ export class EventManager {
             .insert({
                 organizer_id: organizerId,
                 title: eventData.title,
-                sub_category: eventData.category,
+                sub_category: eventData.sub_category,
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
                 location_lat: eventData.location_lat,
                 location_lng: eventData.location_lng,
-                is_private: eventData.is_private || false
+                location_name: eventData.location_name,
+                location_type: eventData.location_type,
+                is_private: eventData.is_private || false,
+                description: eventData.description || '',
+                min_capacity: eventData.min_capacity || 0,
+                max_capacity: eventData.max_capacity || 0
             })
             .select()
             .single();
@@ -58,6 +64,22 @@ export class EventManager {
         if (!eventData.is_private) {
             this.notifyFriendsAboutNewEvent(organizerId, eventData.title).catch(e => console.error("Failed to notify friends:", e));
         }
+
+        // Generate and save event embedding asynchronously
+        const durationHours = (endTime.getTime() - startTime.getTime()) / 3600000;
+        
+        VectorService.getInstance().generateEventEmbedding(data.id, {
+            title: eventData.title,
+            time: startTime,
+            durationHours: durationHours,
+            locationName: eventData.location_name,
+            locationType: eventData.location_type,
+            category: eventData.category,
+            subCategory: eventData.sub_category,
+            minCapacity: eventData.min_capacity,
+            maxCapacity: eventData.max_capacity,
+            description: eventData.description
+        }).catch((e: any) => console.error("Failed to generate event embedding:", e));
 
         return data;
     }
