@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from "uuid";
 import { ImageProcessingException } from "./Exceptions";
 import { BlockType, DataSource, TimeSlot } from "./TimeSlot";
 
-// API Anahtarını aynen korudum
 const GEMINI_API_KEY = "AIzaSyAvIMw1D7HxucsDruZtT7W-WaXabRHqTnc";
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
@@ -27,16 +26,15 @@ export class OCRProcessor {
 
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-      // DİKKAT: Prompt çok daha spesifik. Derslik ve ismi kesin olarak ayırmasını istiyoruz!
       const prompt = `
                 Sen uzman bir veri analistisin. Ekteki görselde bir üniversite ders programı bulunuyor. 
                 Lütfen programdaki dersleri çıkar.
                 ÇOK ÖNEMLİ KURALLAR:
                 1. Çıktıyı SADECE JSON formatında ver.
-                2. "title" alanına sadece dersin kodunu veya adını yaz (Örn: "BİL 476"). İçine "Derslik" kelimesini veya sınıf adını KESİNLİKLE EKLEME.
+                2. "title" alanına sadece dersin kodunu veya adını yaz (Örn: "BİL 476").
                 3. "location" alanına SADECE sınıf/amfi adını yaz (Örn: "AB.105" veya "Kırmızı Amfi"). Eğer yazmıyorsa boş string "" bırak.
                 4. Günleri "Pazartesi", "Salı" gibi tam yaz.
-                5. Saatleri "HH:mm" formatında ver.
+                5. Saatleri görselde ne görüyorsan tam olarak o "HH:mm" formatında ver (Örn: 08:30, 19:20). Kesinlikle saatleri yuvarlama.
                 Format Örneği:
                 [
                   {
@@ -86,48 +84,40 @@ export class OCRProcessor {
       if (targetDay === undefined) return;
 
       const diff = targetDay - today.getDay();
+
+      // Saatleri ve Dakikaları ayırıyoruz
       const [startH, startM] = item.startTime.split(":");
       const [endH, endM] = item.endTime.split(":");
 
-      const startHourInt = parseInt(startH);
-      let endHourInt = parseInt(endH);
+      // DİKKAT: Artık for döngüsüyle saatleri parçalamak YOK!
+      // Doğrudan okunan saati ve dakikayı set ediyoruz.
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() + diff);
+      startDate.setHours(parseInt(startH), parseInt(startM), 0, 0);
 
-      // Eğer ders 10:20'de bitiyorsa, 10:00 - 11:00 saat dilimini de meşgul eder
-      if (parseInt(endM) > 0) {
-        endHourInt += 1;
-      }
+      const endDate = new Date(today);
+      endDate.setDate(today.getDate() + diff);
+      endDate.setHours(parseInt(endH), parseInt(endM), 0, 0);
 
-      // DİKKAT: Bağımsız Silme Algoritması!
-      // Uzun blokları, arayüzdeki gibi tek tek 1'er saatlik bağımsız objelere böleriz.
-      for (let h = startHourInt; h < endHourInt; h++) {
-        const startDate = new Date(today);
-        startDate.setDate(today.getDate() + diff);
-        startDate.setHours(h, 0, 0, 0);
+      const cleanLocation = item.location
+        ? String(item.location).replace("Derslik", "").replace(":", "").trim()
+        : "";
 
-        const endDate = new Date(startDate);
-        endDate.setHours(h + 1, 0, 0, 0);
-
-        // Gelen "Derslik : AB.105" verisindeki fazlalıkları temizliyoruz
-        const cleanLocation = item.location
-          ? String(item.location).replace("Derslik", "").replace(":", "").trim()
-          : "";
-
-        slots.push(
-          new TimeSlot(
-            uuidv4(), // Her saat için YEPYENİ bir ID üretiliyor (Çift silinmeyi engeller)
-            userId,
-            startDate,
-            endDate,
-            BlockType.BUSY,
-            DataSource.OCR,
-            true,
-            {
-              title: String(item.title || "Ders"),
-              location: cleanLocation,
-            },
-          ),
-        );
-      }
+      slots.push(
+        new TimeSlot(
+          uuidv4(),
+          userId,
+          startDate,
+          endDate,
+          BlockType.BUSY,
+          DataSource.OCR,
+          true,
+          {
+            title: String(item.title || "Ders"),
+            location: cleanLocation,
+          },
+        ),
+      );
     });
 
     return slots;

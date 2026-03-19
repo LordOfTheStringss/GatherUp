@@ -27,6 +27,31 @@ export class ScheduleController {
     this.ocrProcessor = ocrProcessor;
   }
 
+  // --- UI İÇİN YEREL STATE (STATE MANAGEMENT) METOTLARI ---
+
+  public handleToggleSlot(
+    currentSchedule: TimeSlot[],
+    dayIndex: number,
+    hour: number,
+    userId: string,
+  ): TimeSlot[] {
+    return this.scheduleManager.toggleTimeSlot(
+      currentSchedule,
+      dayIndex,
+      hour,
+      userId,
+    );
+  }
+
+  public handleDeleteEvent(
+    currentSchedule: TimeSlot[],
+    slotId: string,
+  ): TimeSlot[] {
+    return this.scheduleManager.convertToFree(currentSchedule, slotId);
+  }
+
+  // --- BACKEND VE OCR METOTLARI (HEPSİ KORUNDU) ---
+
   public async uploadScheduleImage(
     file: MultipartFile,
   ): Promise<ResponseEntity<string>> {
@@ -34,7 +59,6 @@ export class ScheduleController {
     return { status: 200, data: imageId };
   }
 
-  // DİKKAT: Buraya userId parametresi ve doğrudan Base64 akışı eklendi
   public async processScheduleImage(
     base64Image: string,
     userId: string,
@@ -47,16 +71,20 @@ export class ScheduleController {
     }
   }
 
-  // DİKKAT: userId parametresi buraya da eklendi
   public async confirmSchedule(
     slots: TimeSlot[],
     userId: string,
   ): Promise<ResponseEntity<any>> {
+    await this.scheduleManager.saveScheduleToDB(slots, userId);
     return { status: 200, message: "Schedule Confirmed" };
   }
 
-  public async getMySchedule(date: Date): Promise<ResponseEntity<ScheduleDTO>> {
-    return { status: 200, data: { busyBlocks: [], freeBlocks: [] } };
+  public async getMySchedule(
+    date: Date,
+    userId: string = "user-123",
+  ): Promise<ResponseEntity<ScheduleDTO>> {
+    const slots = await this.scheduleManager.getScheduleFromDB(userId);
+    return { status: 200, data: { busyBlocks: slots, freeBlocks: [] } };
   }
 
   public async addBusyBlock(slot: TimeSlotDTO): Promise<ResponseEntity<any>> {
