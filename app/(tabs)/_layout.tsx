@@ -1,6 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
-import { Platform, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
+import { AuthManager } from '../../src/core/identity/AuthManager';
+import { UserManager } from '../../src/core/identity/UserManager';
+import { getLocationByLabel } from '../../src/data/locations';
+import { fetchRecommendedEvents } from '../../src/intelligence/RecommendationEngine';
 import { useUIStore } from '../../src/store/uiStore';
 import { useTheme } from '../../src/theme/useTheme';
 
@@ -60,15 +64,64 @@ export default function TabLayout() {
                     ),
                 }}
                 listeners={() => ({
-                    tabPress: (e) => {
+                    tabPress: async (e) => {
                         e.preventDefault();
                         const { showToast, setGlobalLoading } = useUIStore.getState();
                         setGlobalLoading(true);
-                        setTimeout(() => {
+
+                        try {
+                            const user = await AuthManager.getInstance().getCurrentUser();
+                            if (!user) throw new Error("User not logged in");
+
+                            const profileData = await UserManager.getInstance().getUserProfile(user.id);
+                            
+                            // 📍 Default location: Çankaya, Ankara
+                            let userLat = 39.8667;
+                            let userLon = 32.8667;
+
+                            if (profileData?.base_location) {
+                                const mapped = getLocationByLabel(profileData.base_location);
+                                if (mapped) {
+                                    userLat = mapped.latitude;
+                                    userLon = mapped.longitude;
+                                }
+                            }
+
+                            const recommendations = await fetchRecommendedEvents(user.id, userLat, userLon);
                             setGlobalLoading(false);
-                            showToast('✨ AI Match Found! Redirecting to Map...', 'success');
-                            router.push('/(tabs)/map');
-                        }, 1200);
+
+                            if (recommendations && recommendations.length > 0) {
+                                // Prepare the message with all recommended events
+                                let message = "We found these events you might like:\n\n";
+                                recommendations.forEach((event: any, index: number) => {
+                                    message += `${index + 1}. ${event.title}\n`;
+                                    message += `📍 ${event.location_id || 'Location TBA'} (${event.distanceKm} km)\n`;
+                                    message += `🎯 Score: ${event.matchScore}\n\n`;
+                                });
+
+                                // Truncate if too long (Alerts have length limits on some platforms)
+                                if (message.length > 800) {
+                                    message = message.substring(0, 800) + '...\n\n(Showing top results)';
+                                }
+
+                                const topEvent = recommendations[0];
+
+                                Alert.alert(
+                                    "✨ AI Matches Found!",
+                                    message,
+                                    [
+                                        { text: "Dismiss", style: "cancel" },
+                                        { text: `View Top Result`, onPress: () => router.push(`/event/${topEvent.id}`) }
+                                    ]
+                                );
+                            } else {
+                                showToast('No new recommendations found.', 'info');
+                            }
+                        } catch (error) {
+                            setGlobalLoading(false);
+                            console.error("Recommendation Error:", error);
+                            showToast('Failed to fetch recommendations', 'error');
+                        }
                     },
                 })}
             />
