@@ -4,8 +4,14 @@ import { v4 as uuidv4 } from "uuid";
 import { ImageProcessingException } from "./Exceptions";
 import { BlockType, DataSource, TimeSlot } from "./TimeSlot";
 
-const GEMINI_API_KEY = "AIzaSyAvIMw1D7HxucsDruZtT7W-WaXabRHqTnc";
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+
+const getGenAI = () => {
+  if (!GEMINI_API_KEY) {
+    throw new Error("EXPO_PUBLIC_GEMINI_API_KEY tanimli degil.");
+  }
+  return new GoogleGenerativeAI(GEMINI_API_KEY);
+};
 
 export class OCRProcessor {
   public async uploadImage(image: Blob | Buffer | string): Promise<string> {
@@ -24,6 +30,7 @@ export class OCRProcessor {
         ? base64Image.split("base64,")[1]
         : base64Image;
 
+      const genAI = getGenAI();
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const prompt = `
