@@ -1,7 +1,14 @@
 export class InvalidDomainException extends Error {
-    constructor(message: string = "Exclusive to university students.") {
+    constructor(message: string = "This email is not authorized to join this network. Please use your institutional or corporate email.") {
         super(message);
         this.name = "InvalidDomainException";
+    }
+}
+
+export class AgeRestrictedException extends Error {
+    constructor(message: string = "You must be over 18 to register for GatherUp.") {
+        super(message);
+        this.name = "AgeRestrictedException";
     }
 }
 

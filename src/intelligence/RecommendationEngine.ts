@@ -1,6 +1,6 @@
 import { Asset } from 'expo-asset';
-import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { SupabaseClient } from '../infra/SupabaseClient';
+import { Platform } from 'react-native';
 
 // 📍 Haversine Formülü: Mesafe hesaplama (KM)
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -83,7 +83,8 @@ export async function fetchRecommendedEvents(userId: string, userLat: number, us
             : userProfile.profile_vector;
 
         if (!profileVector_384 || profileVector_384.length !== 384) {
-            throw new Error("Kullanıcı profil vektörü boyutu geçersiz (384 bekleniyordu).");
+            console.warn("Kullanıcı profil vektörü henüz oluşturulmamış. Öneri sistemi atlanıyor.");
+            return [];
         }
 
         const finalUserFeatures_1536 = [...historyVector_1152, ...profileVector_384];
@@ -97,13 +98,24 @@ export async function fetchRecommendedEvents(userId: string, userLat: number, us
             throw new Error("Modelin yerel adresi bulunamadı!");
         }
 
-        // ONNX motorunu telefonun işlemcisinde başlat
-        const session = await InferenceSession.create(modelUri);
-
         console.log("3. Veriler modele sokuluyor...");
+        
+        let session;
+        let TensorClass;
+        
+        try {
+            if (Platform.OS === 'web') throw new Error("ONNX not supported on web");
+            const ONNX = require('onnxruntime-react-native');
+            session = await ONNX.InferenceSession.create(modelUri);
+            TensorClass = ONNX.Tensor;
+        } catch (e) {
+            console.error("ONNX Runtime initialization failed:", e);
+            throw new Error("Öneri motoru başlatılamadı.");
+        }
+
         // 1536'lık dizini Float32 formatına çevir
         const float32Data = new Float32Array(finalUserFeatures_1536);
-        const tensor = new Tensor('float32', float32Data, [1, 1536]);
+        const tensor = new TensorClass('float32', float32Data, [1, 1536]);
 
         // Modeli çalıştır
         const results = await session.run({ user_input: tensor });

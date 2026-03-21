@@ -44,6 +44,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             return response.status === 201;
         } catch (error) {
             set({ isLoading: false });
+            // Let the UI handle the exception to show specific messages
             throw error;
         }
     },

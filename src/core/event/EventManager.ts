@@ -47,6 +47,7 @@ export class EventManager {
                 location_lng: eventData.location_lng,
                 location_name: eventData.location_name,
                 location_type: eventData.location_type,
+                location_id: eventData.location_id,
                 is_private: eventData.is_private || false,
                 description: eventData.description || '',
                 min_capacity: eventData.min_capacity || 0,
@@ -264,7 +265,7 @@ export class EventManager {
             .from('event_participants')
             .select(`
                 user_id,
-                users!event_participants_user_id_fkey (id, full_name, profile_image)
+                users!event_participants_user_id_fkey (id, full_name, profile_image, badges)
             `)
             .eq('event_id', eventId);
 

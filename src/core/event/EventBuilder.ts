@@ -78,7 +78,7 @@ export class EventBuilder {
             this.description,
             this.chatRoomId,
             this.visibility,
-            EventStatus.OPEN
+            EventStatus.UPCOMING
         );
 
         // 4. Call ChatService.createRoom - usually managed externally 

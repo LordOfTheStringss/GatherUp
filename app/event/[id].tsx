@@ -1,8 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, ScrollView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useUIStore } from '../../src/store/uiStore';
+
+const BADGE_CONFIG: Record<string, { icon: string; title: string; color: string; desc: string }> = {
+  FIRST_STEP: { icon: "footsteps", title: "First Step", color: "#3B82F6", desc: "1 Event Attended" },
+  THE_REGULAR: { icon: "calendar", title: "The Regular", color: "#8B5CF6", desc: "10 Events Attended" },
+  COMMUNITY_LEGEND: { icon: "star", title: "Community Legend", color: "#F59E0B", desc: "50 Events Attended" },
+  THE_HOST: { icon: "home", title: "The Host", color: "#10B981", desc: "1 Event Hosted" },
+  ACTIVE_ORGANIZER: { icon: "megaphone", title: "Active Organizer", color: "#EC4899", desc: "10 Events Hosted" },
+  LISAN_AL_GAIB: { icon: "planet", title: "Lisan al-Gaib", color: "#F43F5E", desc: "30 Events Hosted" },
+  TEAM_SPIRIT: { icon: "people", title: "Team Spirit", color: "#06B6D4", desc: "1 Group AI Plan" },
+  THE_COORDINATOR: { icon: "options", title: "The Coordinator", color: "#6366F1", desc: "10 Group Plans" },
+  THE_GANGMAKER: { icon: "flame", title: "The GangMaker", color: "#EAB308", desc: "25 Group Plans" },
+  SPONTANEOUS: { icon: "flash", title: "Spontaneous", color: "#14B8A6", desc: "1 AI Suggestion" },
+  THE_ADVENTURER: { icon: "compass", title: "The Adventurer", color: "#D946EF", desc: "10 AI Suggestions" },
+  INDIANA_JONES: { icon: "map", title: "Indiana Jones", color: "#84CC16", desc: "25 AI Suggestions" },
+};
 
 export default function EventDetailScreen() {
     const { id } = useLocalSearchParams();
@@ -11,6 +26,8 @@ export default function EventDetailScreen() {
     const [inputText, setInputText] = useState('');
     const [messages, setMessages] = useState<any[]>([]);
     const [showBadgePopup, setShowBadgePopup] = useState(false);
+    const [selectedParticipant, setSelectedParticipant] = useState<any | null>(null);
+    const [showParticipantModal, setShowParticipantModal] = useState(false);
 
     const [currentUserId, setCurrentUserId] = useState<string>('');
     const [hasJoined, setHasJoined] = useState(false);
@@ -244,7 +261,13 @@ export default function EventDetailScreen() {
                         keyExtractor={(p) => p.id}
                         showsHorizontalScrollIndicator={false}
                         renderItem={({ item }) => (
-                            <View style={styles.participantItem}>
+                            <TouchableOpacity 
+                                style={styles.participantItem}
+                                onPress={() => {
+                                    setSelectedParticipant(item);
+                                    setShowParticipantModal(true);
+                                }}
+                            >
                                 <View style={styles.pAvatar}><Text style={styles.pAvatarText}>{item.full_name?.charAt(0) || 'U'}</Text></View>
                                 <Text style={styles.pName} numberOfLines={1}>{item.full_name?.split(' ')[0]}</Text>
                                 {item.id !== currentUserId && (
@@ -252,7 +275,7 @@ export default function EventDetailScreen() {
                                         <Ionicons name="person-add" size={12} color="#FFF" />
                                     </TouchableOpacity>
                                 )}
-                            </View>
+                            </TouchableOpacity>
                         )}
                     />
                 </View>
@@ -327,6 +350,46 @@ export default function EventDetailScreen() {
                     </View>
                 </Modal>
 
+                {/* Participant Profile Modal */}
+                <Modal visible={showParticipantModal} animationType="slide" transparent>
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <View style={[styles.pAvatar, { width: 64, height: 64, borderRadius: 32 }]}>
+                                <Text style={[styles.pAvatarText, { fontSize: 28 }]}>{selectedParticipant?.full_name?.charAt(0) || 'U'}</Text>
+                            </View>
+                            <Text style={styles.modalTitle}>{selectedParticipant?.full_name}</Text>
+                            
+                            <Text style={styles.sectionTitle}>Earned Badges</Text>
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={{ marginVertical: 12, paddingBottom: 16 }}
+                            >
+                                {selectedParticipant?.badges && selectedParticipant.badges.length > 0 ? (
+                                    selectedParticipant.badges.map((b: string) => {
+                                        const cfg = BADGE_CONFIG[b];
+                                        if (!cfg) return null;
+                                        return (
+                                            <View key={b} style={styles.badgeSmall}>
+                                                <View style={{ backgroundColor: cfg.color + '20', padding: 12, borderRadius: 20, marginBottom: 6 }}>
+                                                    <Ionicons name={cfg.icon as any} size={24} color={cfg.color} />
+                                                </View>
+                                                <Text style={{ color: '#E2E8F0', fontSize: 10, fontWeight: 'bold', textAlign: 'center' }}>{cfg.title}</Text>
+                                            </View>
+                                        );
+                                    })
+                                ) : (
+                                    <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 16 }}>No badges earned yet.</Text>
+                                )}
+                            </ScrollView>
+
+                            <TouchableOpacity style={styles.skipBtn} onPress={() => setShowParticipantModal(false)}>
+                                <Text style={styles.skipText}>Close</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
+
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
@@ -380,6 +443,7 @@ const styles = StyleSheet.create({
     badgeBtn: { flex: 1, alignItems: 'center', backgroundColor: '#15202B', marginHorizontal: 4, paddingVertical: 16, borderRadius: 16, borderWidth: 1, borderColor: '#334155' },
     emoji: { fontSize: 32, marginBottom: 8 },
     badgeName: { color: '#E2E8F0', fontWeight: 'bold' },
+    badgeSmall: { alignItems: 'center', marginHorizontal: 8, width: 70 },
 
     skipBtn: { paddingVertical: 12 },
     skipText: { color: '#94A3B8', fontSize: 16, fontWeight: 'bold' },

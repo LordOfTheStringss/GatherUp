@@ -54,7 +54,7 @@ export class FriendshipManager {
         // Users who follow me, but I don't follow them
         const { data: whoFollowsMe, error } = await this.supabaseClient.client
             .from('friendships')
-            .select(`user_id, users!friendships_user_id_fkey(full_name, id)`)
+            .select(`user_id, users!friendships_user_id_fkey(full_name, id, badges)`)
             .eq('friend_id', userId);
 
         if (error) throw new Error(error.message);
@@ -76,7 +76,7 @@ export class FriendshipManager {
         // Mutual follows
         const { data: whoFollowsMe, error } = await this.supabaseClient.client
             .from('friendships')
-            .select(`user_id, users!friendships_user_id_fkey(full_name, id)`)
+            .select(`user_id, users!friendships_user_id_fkey(full_name, id, badges)`)
             .eq('friend_id', userId);
 
         if (error) throw new Error(error.message);

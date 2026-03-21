@@ -28,9 +28,26 @@ export class AuthManager {
         const email = data.email.trim();
         const password = data.password.trim();
         const username = data.username.trim();
+        const ageNum = parseInt(data.age);
+
+        if (isNaN(ageNum) || ageNum < 18) {
+            const { AgeRestrictedException } = await import('./Exceptions');
+            throw new AgeRestrictedException();
+        }
 
         if (!this.validateDomain(email)) {
             throw new InvalidDomainException();
+        }
+
+        // Check if username is already taken in the public.users table
+        const { data: existingUser, error: checkError } = await this.supabaseClient.client
+            .from('users')
+            .select('id')
+            .eq('username', username)
+            .maybeSingle();
+
+        if (existingUser) {
+            throw new Error("This username is already taken.");
         }
 
         const { data: authData, error } = await this.supabaseClient.client.auth.signUp({
@@ -48,6 +65,9 @@ export class AuthManager {
 
         if (error) {
             console.error('Registration failed:', error);
+            if (error.message.includes('already registered')) {
+                throw new Error("An account with this email address already exists.");
+            }
             throw new Error(error.message);
         }
 
@@ -114,8 +134,46 @@ export class AuthManager {
     }
 
     public validateDomain(email: string): boolean {
-        // Regex check: check Whitelisted_Domains.
-        return email.endsWith('.edu.tr'); // Basic implementation
+        const lowerEmail = email.toLowerCase();
+
+        // 1. Allow any student emails
+        if (lowerEmail.endsWith('.edu') || lowerEmail.endsWith('.edu.tr')) {
+            return true;
+        }
+
+        // 2. Specific corporate whitelisted domains
+        const whitelistedDomains = [
+            // Savunma Sanayi ve Havacılık
+            '@aselsan.com.tr',
+            '@havelsan.com.tr',
+            '@roketsan.com.tr',
+            '@tusas.com',
+            '@tai.com.tr',
+            '@baykartech.com',
+            '@stm.com.tr',
+            '@tei.com.tr',
+            '@tubitak.gov.tr',
+            // Teknoloji, E-Ticaret ve Telekomünikasyon
+            '@trendyol.com',
+            '@hepsiburada.com',
+            '@getir.com',
+            '@turkcell.com.tr',
+            '@turktelekom.com.tr',
+            '@vodafone.com.tr',
+            '@logo.com.tr',
+            // Dev Holdingler ve Global Şirketler
+            '@thy.com',
+            '@koc.com.tr',
+            '@sabanci.com',
+            '@eczacibasi.com.tr',
+            // Finans ve Bankacılık
+            '@garantibbva.com.tr',
+            '@isbank.com.tr',
+            '@akbank.com',
+            '@yapikredi.com.tr'
+        ];
+
+        return whitelistedDomains.some(domain => lowerEmail.endsWith(domain));
     }
 
     public async logout(): Promise<void> {

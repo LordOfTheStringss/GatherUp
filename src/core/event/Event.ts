@@ -11,11 +11,11 @@ export enum EventCategory {
 }
 
 export enum EventStatus {
-    OPEN = 'OPEN',
-    FULL = 'FULL',
-    CANCELLED = 'CANCELLED',
-    MERGED = 'MERGED',
-    EXPIRED = 'EXPIRED'
+    DRAFT = 'DRAFT',
+    UPCOMING = 'UPCOMING',
+    ONGOING = 'ONGOING',
+    COMPLETED = 'COMPLETED',
+    CANCELLED = 'CANCELLED'
 }
 
 export enum EventVisibility {
@@ -56,7 +56,7 @@ export class Event {
         description: string,
         chatRoomId: string,
         visibility: EventVisibility = EventVisibility.PUBLIC,
-        status: EventStatus = EventStatus.OPEN
+        status: EventStatus = EventStatus.UPCOMING
     ) {
         this.eventId = eventId;
         this.organizerId = organizerId;
@@ -91,7 +91,7 @@ export class Event {
         }
 
         if (this.isFull()) {
-            this.status = EventStatus.FULL;
+            this.status = EventStatus.ONGOING; // or COMPLETED
         }
 
         // Emits EVENT_JOINED via infra
@@ -101,8 +101,8 @@ export class Event {
     public removeParticipant(user: User): void {
         this.participants = this.participants.filter(p => p.userId !== user.userId);
 
-        if (this.status === EventStatus.FULL && !this.isFull()) {
-            this.status = EventStatus.OPEN;
+        if (this.status === EventStatus.ONGOING && !this.isFull()) {
+            this.status = EventStatus.UPCOMING;
         }
 
         // Potential call for Pivot logic if size < minCapacity

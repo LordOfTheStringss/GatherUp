@@ -1,9 +1,25 @@
 import { Location } from '../../spatial/Location';
 
 export enum BadgeEnum {
-    PUNCTUAL = 'PUNCTUAL',
-    FUN = 'FUN',
-    LEADER = 'LEADER'
+    // Participation
+    FIRST_STEP = 'FIRST_STEP',
+    THE_REGULAR = 'THE_REGULAR',
+    COMMUNITY_LEGEND = 'COMMUNITY_LEGEND',
+    
+    // Organizing
+    THE_HOST = 'THE_HOST',
+    ACTIVE_ORGANIZER = 'ACTIVE_ORGANIZER',
+    LISAN_AL_GAIB = 'LISAN_AL_GAIB',
+
+    // Group AI Planning
+    TEAM_SPIRIT = 'TEAM_SPIRIT',
+    THE_COORDINATOR = 'THE_COORDINATOR',
+    THE_GANGMAKER = 'THE_GANGMAKER',
+
+    // One-Tap Suggestion
+    SPONTANEOUS = 'SPONTANEOUS',
+    THE_ADVENTURER = 'THE_ADVENTURER',
+    INDIANA_JONES = 'INDIANA_JONES',
 }
 
 export interface ProfileDTO {

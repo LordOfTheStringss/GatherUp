@@ -36,8 +36,24 @@ export default function RegisterScreen() {
                 showToast('Registration failed.', 'error');
             }
         } catch (error: any) {
-            // Typically domain violation throws InvalidDomainException
-            showToast(error.message || 'Domain violation or network error.', 'error');
+            // Mapping technical errors to user-friendly English messages
+            let errorMessage = 'An error occurred. Please try again.';
+            
+            if (error.name === 'InvalidDomainException' || error.message.includes('authorized')) {
+                errorMessage = "Please use an allowed institutional or corporate email address.";
+            } else if (error.name === 'AgeRestrictedException' || error.message.includes('18')) {
+                errorMessage = "You must be over 18 to register.";
+            } else if (error.message.includes('username') || error.message.includes('taken')) {
+                errorMessage = 'This username is already taken.';
+            } else if (error.message.includes('email') || error.message.includes('exists') || error.message.includes('registered')) {
+                errorMessage = 'An account with this email address already exists.';
+            } else if (error.message.includes('password')) {
+                errorMessage = 'Password must be at least 6 characters.';
+            } else {
+                errorMessage = error.message || 'Registration failed.';
+            }
+
+            showToast(errorMessage, 'error');
         }
     };
 
@@ -122,6 +138,10 @@ export default function RegisterScreen() {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
+                    autoComplete="off"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    textContentType="password"
                 />
 
                 <TextInput
@@ -131,6 +151,10 @@ export default function RegisterScreen() {
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry
+                    autoComplete="off"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    textContentType="password"
                 />
 
                 <TouchableOpacity style={styles.button} onPress={handleRegister}>

@@ -18,6 +18,26 @@ import { useAuthStore } from "../../src/store/authStore";
 import { useUIStore } from "../../src/store/uiStore";
 import { ThemeColors } from "../../src/theme/colors";
 import { useTheme } from "../../src/theme/useTheme";
+import { ANKARA_NEIGHBORHOODS } from "../../src/data/locations";
+import { UserController } from "../../src/controllers/UserController";
+import { UserManager } from "../../src/core/identity/UserManager";
+import { FriendshipManager } from "../../src/core/identity/FriendshipManager";
+import { GamificationManager } from "../../src/core/identity/GamificationManager";
+
+const BADGE_CONFIG: Record<string, { icon: any; title: string; color: string; desc: string }> = {
+  FIRST_STEP: { icon: "footsteps", title: "First Step", color: "#3B82F6", desc: "1 Event Attended" },
+  THE_REGULAR: { icon: "calendar", title: "The Regular", color: "#8B5CF6", desc: "10 Events Attended" },
+  COMMUNITY_LEGEND: { icon: "star", title: "Community Legend", color: "#F59E0B", desc: "50 Events Attended" },
+  THE_HOST: { icon: "home", title: "The Host", color: "#10B981", desc: "1 Event Hosted" },
+  ACTIVE_ORGANIZER: { icon: "megaphone", title: "Active Organizer", color: "#EC4899", desc: "10 Events Hosted" },
+  LISAN_AL_GAIB: { icon: "planet", title: "Lisan al-Gaib", color: "#F43F5E", desc: "30 Events Hosted" },
+  TEAM_SPIRIT: { icon: "people", title: "Team Spirit", color: "#06B6D4", desc: "1 Group AI Plan" },
+  THE_COORDINATOR: { icon: "options", title: "The Coordinator", color: "#6366F1", desc: "10 Group Plans" },
+  THE_GANGMAKER: { icon: "flame", title: "The GangMaker", color: "#EAB308", desc: "25 Group Plans" },
+  SPONTANEOUS: { icon: "flash", title: "Spontaneous", color: "#14B8A6", desc: "1 AI Suggestion" },
+  THE_ADVENTURER: { icon: "compass", title: "The Adventurer", color: "#D946EF", desc: "10 AI Suggestions" },
+  INDIANA_JONES: { icon: "map", title: "Indiana Jones", color: "#84CC16", desc: "25 AI Suggestions" },
+};
 
 // TAKVİM İNGİLİZCE (Varsayılan olarak İngilizce ama emin olmak için)
 LocaleConfig.locales["en"] = {
@@ -94,6 +114,9 @@ export default function ProfileScreen() {
   const [username, setUsername] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<any[]>([]);
   const [interests, setInterests] = useState<string[]>([]);
+  const [badges, setBadges] = useState<string[]>([]);
+  const [baseLocation, setBaseLocation] = useState<string | null>(null);
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // TAKVİM İÇİN SEÇİLİ GÜN STATE'İ
@@ -109,23 +132,18 @@ export default function ProfileScreen() {
       const fetchProfileData = async () => {
         setIsLoading(true);
         try {
-          const { UserController } =
-            await import("../../src/controllers/UserController");
-          const { UserManager } =
-            await import("../../src/core/identity/UserManager");
-          const { FriendshipManager } =
-            await import("../../src/core/identity/FriendshipManager");
-
           const userController = new UserController(
             UserManager.getInstance(),
             new FriendshipManager({} as any),
-            {} as any,
+            new GamificationManager()
           );
           const res = await userController.getMyProfile();
 
           if (res.status === 200 && res.data) {
             setUsername(res.data.fullName || null);
             setInterests(res.data.interests || []);
+            setBadges(res.data.badges || []);
+            setBaseLocation(res.data.baseLocation || "Not Set");
             if (res.data.stats) {
               setStats({
                 eventsAttended: res.data.stats.eventsAttended,
@@ -263,6 +281,26 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleUpdateBaseLocation = async (label: string) => {
+    try {
+      setGlobalLoading(true);
+      const { AuthManager } = await import("../../src/core/identity/AuthManager");
+      const { UserManager } = await import("../../src/core/identity/UserManager");
+      const userSession = await AuthManager.getInstance().getCurrentUser();
+      if (!userSession) throw new Error("Not auth");
+      
+      const uManager = UserManager.getInstance();
+      await uManager.updateProfile(userSession.id, { baseLocation: label });
+      setBaseLocation(label);
+      setLocationModalVisible(false);
+      showToast("Base location updated!", "success");
+    } catch (e: any) {
+      showToast(e.message, "error");
+    } finally {
+      setGlobalLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
@@ -315,12 +353,6 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.userName}>{username || "USER"}</Text>
           <Text style={styles.userEmail}>{userEmail}</Text>
-          <View style={styles.reputationBadge}>
-            <Ionicons name="star" size={16} color="#F59E0B" />
-            <Text style={styles.reputationText}>
-              {stats.reputationScore} Trust Score
-            </Text>
-          </View>
         </View>
 
         {/* Stats Section */}
@@ -407,6 +439,41 @@ export default function ProfileScreen() {
               <Ionicons name="add" size={18} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Showcase: Badges */}
+        <View style={[styles.showcaseSection, { marginTop: 16 }]}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.showcaseTitle}>My Badges</Text>
+            {badges.length > 0 && <Text style={{ color: theme.textSecondary, fontSize: 12 }}>({badges.length})</Text>}
+          </View>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            contentContainerStyle={{ paddingLeft: 20, paddingBottom: 10 }}
+          >
+            {badges.length > 0 ? (
+              badges.map((b, idx) => {
+                const cfg = BADGE_CONFIG[b];
+                if (!cfg) return null;
+                return (
+                  <View key={`b-${idx}`} style={[styles.badgeCard, { borderColor: cfg.color }]}>
+                    <View style={[styles.badgeIconBg, { backgroundColor: cfg.color + '20' }]}>
+                      <Ionicons name={cfg.icon} size={24} color={cfg.color} />
+                    </View>
+                    <Text style={[styles.badgeTitle, { color: cfg.color }]}>{cfg.title}</Text>
+                    <Text style={styles.badgeDesc}>{cfg.desc}</Text>
+                  </View>
+                );
+              })
+            ) : (
+              <View style={{ paddingVertical: 10 }}>
+                <Text style={{ color: theme.textSecondary, fontSize: 14 }}>
+                  No badges unlocked yet. Attend or host events to earn them!
+                </Text>
+              </View>
+            )}
+          </ScrollView>
         </View>
 
         {/* Showcase: Takvim ve Program */}
@@ -537,11 +604,23 @@ export default function ProfileScreen() {
 
         {/* Account Actions */}
         <View style={styles.actionsContainer}>
-          <Text style={styles.sectionTitle}>Account Setup</Text>
+          <Text style={styles.sectionTitle}>Event Settings</Text>
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => setLocationModalVisible(true)}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: theme.primaryLight }]}>
+              <Ionicons name="location-outline" size={22} color={theme.primary} />
+            </View>
+            <Text style={styles.actionText}>Base Location: {baseLocation || "Not Set"}</Text>
+            <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+          </TouchableOpacity>
+
+          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Account Setup</Text>
           <PanicButton />
 
           <TouchableOpacity
-            style={styles.actionRow}
+            style={[styles.actionRow, { marginTop: 12 }]}
             onPress={() => router.push("/(tabs)/edit-profile")}
           >
             <View
@@ -638,7 +717,18 @@ export default function ProfileScreen() {
                           {r.full_name?.charAt(0)}
                         </Text>
                       </View>
-                      <Text style={styles.friendName}>{r.full_name}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.friendName}>{r.full_name}</Text>
+                        {r.badges && r.badges.length > 0 && (
+                          <View style={{ flexDirection: 'row', marginTop: 4 }}>
+                            {r.badges.map((b: string) => {
+                              const cfg = BADGE_CONFIG[b];
+                              if (!cfg) return null;
+                              return <Ionicons key={b} name={cfg.icon as any} size={14} color={cfg.color} style={{ marginRight: 4 }} />;
+                            })}
+                          </View>
+                        )}
+                      </View>
                       <TouchableOpacity
                         style={styles.acceptBtn}
                         onPress={() => handleAccept(r.id)}
@@ -669,7 +759,18 @@ export default function ProfileScreen() {
                       {f.full_name?.charAt(0)}
                     </Text>
                   </View>
-                  <Text style={styles.friendName}>{f.full_name}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.friendName}>{f.full_name}</Text>
+                    {f.badges && f.badges.length > 0 && (
+                      <View style={{ flexDirection: 'row', marginTop: 4 }}>
+                        {f.badges.map((b: string) => {
+                          const cfg = BADGE_CONFIG[b];
+                          if (!cfg) return null;
+                          return <Ionicons key={b} name={cfg.icon as any} size={14} color={cfg.color} style={{ marginRight: 4 }} />;
+                        })}
+                      </View>
+                    )}
+                  </View>
                 </View>
               ))}
 
@@ -695,6 +796,39 @@ export default function ProfileScreen() {
                   <Text style={{ color: "#fff", fontWeight: "bold" }}>Add</Text>
                 </TouchableOpacity>
               </View>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* Base Location Modal */}
+      {locationModalVisible && (
+        <View style={StyleSheet.absoluteFillObject}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)" }}
+            onPress={() => setLocationModalVisible(false)}
+          />
+          <View style={[styles.modalContent, { maxHeight: '70%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Base Location</Text>
+              <TouchableOpacity onPress={() => setLocationModalVisible(false)}>
+                <Ionicons name="close" size={28} color={theme.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {ANKARA_NEIGHBORHOODS.map((loc) => (
+                <TouchableOpacity
+                  key={loc.id}
+                  style={styles.locationOptionRow}
+                  onPress={() => handleUpdateBaseLocation(loc.label)}
+                >
+                  <Ionicons name="location-outline" size={20} color={baseLocation === loc.label ? theme.primary : theme.textSecondary} />
+                  <Text style={[styles.locationOptionText, baseLocation === loc.label && { color: theme.primary, fontWeight: "bold" }]}>
+                    {loc.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           </View>
         </View>
@@ -822,24 +956,62 @@ const createStyles = (theme: ThemeColors) =>
       fontSize: 18,
       fontWeight: "800",
     },
-    chipsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-    chip: {
-      backgroundColor: theme.card,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: theme.cardBorder,
+    chipsContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      paddingHorizontal: 20,
+      marginTop: 12,
     },
-    chipText: { color: theme.textPrimary, fontWeight: "600", fontSize: 14 },
-    addChip: {
-      backgroundColor: "transparent",
+    chip: {
+      backgroundColor: theme.primaryLight,
       paddingHorizontal: 16,
-      paddingVertical: 10,
+      paddingVertical: 8,
       borderRadius: 20,
-      borderStyle: "dashed",
+      marginRight: 8,
+      marginBottom: 8,
+    },
+    chipText: { color: theme.primary, fontWeight: "700", fontSize: 13 },
+    addChip: {
       borderWidth: 1,
       borderColor: theme.cardBorder,
+      borderStyle: "dashed",
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 8,
+    },
+
+    // Badge Styles
+    badgeCard: {
+      width: 130,
+      marginRight: 12,
+      borderWidth: 1,
+      borderRadius: 16,
+      padding: 16,
+      backgroundColor: theme.background,
+      alignItems: "center"
+    },
+    badgeIconBg: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 12
+    },
+    badgeTitle: {
+      fontSize: 14,
+      fontWeight: "800",
+      textAlign: "center",
+      marginBottom: 6
+    },
+    badgeDesc: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      textAlign: "center",
+      lineHeight: 16
     },
     editScheduleBtn: {
       flexDirection: "row",
@@ -1028,4 +1200,17 @@ const createStyles = (theme: ThemeColors) =>
       justifyContent: "center",
       alignItems: "center",
     },
+    locationOptionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.cardBorder
+    },
+    locationOptionText: {
+      fontSize: 16,
+      color: theme.textPrimary,
+      marginLeft: 12
+    },
+
   });

@@ -49,7 +49,8 @@ export class AuthController {
             });
             return { status: 201, message: "User Created" };
         } catch (error: any) {
-            return { status: 400, message: error.message || "Registration failed" };
+            // Re-throw the error so that the Store/UI can handle specific Exception types
+            throw error;
         }
     }
 

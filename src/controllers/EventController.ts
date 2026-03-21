@@ -2,7 +2,6 @@ import { ConflictEngine } from '../core/event/ConflictEngine';
 import { Event } from '../core/event/Event';
 import { EventManager } from '../core/event/EventManager';
 import { AuthManager } from '../core/identity/AuthManager';
-import { RecommendationEngine } from '../intelligence/RecommendationEngine';
 import { GeoPoint } from '../spatial/Location';
 import { ResponseEntity } from './ResponseEntity';
 
@@ -16,6 +15,7 @@ export interface CreateEventDTO {
     location_lng?: number;
     location_name?: string;
     location_type?: string;
+    location_id?: string;
     is_private?: boolean;
     description?: string;
     min_capacity?: number;
@@ -45,7 +45,7 @@ export interface EventDetailDTO {
 export class EventController {
     // Attributes
     private eventManager: EventManager;
-    private recommendationEngine: RecommendationEngine;
+    private recommendationEngine: any;
     private conflictEngine: ConflictEngine;
 
     constructor(eventManager: EventManager, recommendationEngine: any, conflictEngine: ConflictEngine) {

@@ -2,6 +2,7 @@ import { AuthManager } from '../core/identity/AuthManager';
 import { FriendshipManager } from '../core/identity/FriendshipManager';
 import { GamificationManager } from '../core/identity/GamificationManager';
 import { UserManager } from '../core/identity/UserManager';
+import { SupabaseClient } from '../infra/SupabaseClient';
 import { ResponseEntity } from './ResponseEntity';
 
 export interface UpdateProfileDTO {
@@ -66,10 +67,20 @@ export class UserController {
             const user = await this.userManager.getUserProfile(effectiveId);
 
             // Get stats
-            const sClient = require('../infra/SupabaseClient').SupabaseClient.getInstance().client;
+            const sClient = SupabaseClient.getInstance().client;
             const { count: eventsAttended } = await sClient.from('event_participants').select('*', { count: 'exact', head: true }).eq('user_id', effectiveId);
             const { count: eventsHosted } = await sClient.from('events').select('*', { count: 'exact', head: true }).eq('organizer_id', effectiveId);
             const friends = await this.friendshipManager.getTrustedCircle(effectiveId);
+
+            // Sync and award badges gracefully, do not let it fail the profile fetch
+            let updatedBadges: string[] = user.badges || [];
+            try {
+                if (this.gamificationManager) {
+                    updatedBadges = await this.gamificationManager.calculateAndAwardBadges(effectiveId);
+                }
+            } catch (err) {
+                console.error("Gamification fail:", err);
+            }
 
             return {
                 status: 200,
@@ -79,7 +90,7 @@ export class UserController {
                     fullName: user.full_name || '',
                     bio: user.privacy_settings?.bio || '',
                     xp: user.reputation_score || 0,
-                    badges: user.badges || [],
+                    badges: updatedBadges,
                     interests: user.interest_tags || [],
                     baseLocation: user.base_location || '',
                     stats: {
@@ -90,6 +101,7 @@ export class UserController {
                 }
             };
         } catch (error: any) {
+            console.error("UserController: Failed to fetch profile:", error);
             return { status: 404, message: error.message || "User not found" };
         }
     }
@@ -134,8 +146,9 @@ export class UserController {
                     fullName: user.full_name || '',
                     bio: user.privacy_settings?.bio || '',
                     trustScore: user.reputation_score || 0,
-                    interestTags: user.interest_tags || []
-                }
+                    interestTags: user.interest_tags || [],
+                    badges: user.badges || []
+                } as any // cast any for extended DTO
             };
         } catch (error: any) {
             return { status: 404, message: error.message || "User not found" };
