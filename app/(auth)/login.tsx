@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuthStore } from '../../src/store/authStore';
 import { useUIStore } from '../../src/store/uiStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthManager } from '../../src/core/identity/AuthManager';
 
 export default function LoginScreen() {
     const [identifier, setIdentifier] = useState('');
@@ -19,6 +21,19 @@ export default function LoginScreen() {
         try {
             const success = await login({ email: identifier, password });
             if (success) {
+                try {
+                    const user = await AuthManager.getInstance().getCurrentUser();
+                    if (user) {
+                        // Mark onboarding as seen if the user logs in normally
+                        await AsyncStorage.setItem(`@has_seen_events_onboarding_${user.id}`, "true");
+                        await AsyncStorage.setItem(`@has_seen_map_onboarding_${user.id}`, "true");
+                        await AsyncStorage.setItem(`@has_seen_create_onboarding_${user.id}`, "true");
+                        await AsyncStorage.setItem(`@has_seen_profile_onboarding_${user.id}`, "true");
+                    }
+                } catch (e) {
+                    console.warn("Failed to mark onboarding as seen during login", e);
+                }
+
                 showToast('Login successful!', 'success');
                 router.replace('/(tabs)');
             } else {

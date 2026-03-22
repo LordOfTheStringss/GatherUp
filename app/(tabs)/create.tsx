@@ -4,6 +4,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthManager } from '../../src/core/identity/AuthManager';
+import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
+import { useFocusEffect } from 'expo-router';
 import { EventController } from '../../src/controllers/EventController';
 import { EventManager } from '../../src/core/event/EventManager';
 import { useUIStore } from '../../src/store/uiStore';
@@ -14,10 +18,34 @@ import { useTheme } from '../../src/theme/useTheme';
 const eventController = new EventController(EventManager.getInstance(), {} as any, {} as any);
 
 export default function CreateEventScreen() {
-    const { showToast, setGlobalLoading } = useUIStore();
+    const { showToast, setGlobalLoading, createTooltipStep, setCreateTooltipStep, handleNextCreateTooltip, handleSkipCreateTooltip } = useUIStore();
+
+    useEffect(() => {
+        if (createTooltipStep === 1 || createTooltipStep === -1) setActiveTab("manual");
+        else if (createTooltipStep === 2) setActiveTab("ai");
+    }, [createTooltipStep]);
+
     const theme = useTheme();
     const styles = createStyles(theme);
     const [activeTab, setActiveTab] = useState<'manual' | 'ai'>('manual');
+
+    useFocusEffect(
+        React.useCallback(() => {
+            const checkCreateOnboarding = async () => {
+                try {
+                    const user = await AuthManager.getInstance().getCurrentUser();
+                    if (!user) return;
+                    const hasSeen = await AsyncStorage.getItem(`@has_seen_create_onboarding_${user.id}`);
+                    if (!hasSeen) {
+                        setTimeout(() => setCreateTooltipStep(0), 500);
+                    }
+                } catch (e) {
+                    console.warn(e);
+                }
+            };
+            checkCreateOnboarding();
+        }, [])
+    );
 
     const CATEGORIES = ['Sports', 'Academic', 'Social', 'Gaming', 'Music', 'Tech'];
 
@@ -373,6 +401,18 @@ export default function CreateEventScreen() {
 
     return (
         <SafeAreaView style={styles.safeArea}>
+            <View style={{ position: 'absolute', bottom: 10, left: '74%', transform: [{ translateX: -20 }], width: 40, height: 10, zIndex: 999 }} pointerEvents="none">
+                <OnboardingTooltip
+                    isVisible={createTooltipStep === 0}
+                    content="Create an event! Use this tab to make your own plan or get help from AI."
+                    placement="top"
+                    onNext={handleNextCreateTooltip}
+                    onClose={handleSkipCreateTooltip}
+                >
+                    <View style={{ width: '100%', height: '100%' }} />
+                </OnboardingTooltip>
+            </View>
+
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
 
                 {/* Custom Header */}
@@ -391,6 +431,17 @@ export default function CreateEventScreen() {
                         onPress={() => setActiveTab('manual')}
                         activeOpacity={0.7}
                     >
+                        <View style={{ position: 'absolute', width: '100%', height: 5, bottom: 0 }} pointerEvents="none">
+                            <OnboardingTooltip
+                                isVisible={createTooltipStep === 1}
+                                content="You can manually create your own event with all the details from this tab."
+                                placement="bottom"
+                                onNext={handleNextCreateTooltip}
+                                onClose={handleSkipCreateTooltip}
+                            >
+                                <View style={{ width: '100%', height: '100%' }} />
+                            </OnboardingTooltip>
+                        </View>
                         <Text style={[styles.tabText, activeTab === 'manual' && styles.activeTabText]}>Manual</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -398,6 +449,17 @@ export default function CreateEventScreen() {
                         onPress={() => setActiveTab('ai')}
                         activeOpacity={0.7}
                     >
+                        <View style={{ position: 'absolute', width: '100%', height: 5, bottom: 0 }} pointerEvents="none">
+                            <OnboardingTooltip
+                                isVisible={createTooltipStep === 2}
+                                content="Plan the best common time and place for your friends' schedules in seconds with our AI assistant!"
+                                placement="bottom"
+                                onNext={handleNextCreateTooltip}
+                                onClose={handleSkipCreateTooltip}
+                            >
+                                <View style={{ width: '100%', height: '100%' }} />
+                            </OnboardingTooltip>
+                        </View>
                         <Ionicons name="sparkles" size={16} color={activeTab === 'ai' ? '#FFF' : '#A78BFA'} style={{ marginRight: 6 }} />
                         <Text style={[styles.tabText, activeTab === 'ai' && styles.activeTabText]}>Plan with AI</Text>
                     </TouchableOpacity>

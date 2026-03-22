@@ -13,6 +13,9 @@ import {
   View,
 } from "react-native";
 import { Calendar, LocaleConfig } from "react-native-calendars"; // TAKVİM GERİ GELDİ!
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthManager } from "../../src/core/identity/AuthManager";
+import { OnboardingTooltip } from "../../src/components/OnboardingTooltip";
 import { PanicButton } from "../../src/components/ui/PanicButton";
 import { useAuthStore } from "../../src/store/authStore";
 import { useUIStore } from "../../src/store/uiStore";
@@ -94,7 +97,7 @@ const getDayIndexFromDateString = (dateString: string) => {
 
 export default function ProfileScreen() {
   const { logout, userEmail } = useAuthStore();
-  const { showToast, setGlobalLoading, themePreference, setThemePreference } =
+  const { showToast, setGlobalLoading, themePreference, setThemePreference, profileTooltipVisible, setProfileTooltipVisible, handleDismissProfileTooltip } =
     useUIStore();
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -132,6 +135,14 @@ export default function ProfileScreen() {
       const fetchProfileData = async () => {
         setIsLoading(true);
         try {
+          const user = await AuthManager.getInstance().getCurrentUser();
+          if (user) {
+            const hasSeen = await AsyncStorage.getItem(`@has_seen_profile_onboarding_${user.id}`);
+            if (!hasSeen) {
+              setTimeout(() => setProfileTooltipVisible(true), 500);
+            }
+          }
+
           const userController = new UserController(
             UserManager.getInstance(),
             new FriendshipManager({} as any),
@@ -337,6 +348,18 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <View style={{ position: 'absolute', bottom: 10, left: '92%', transform: [{ translateX: -10 }], width: 40, height: 10, zIndex: 999 }} pointerEvents="none">
+        <OnboardingTooltip
+            isVisible={profileTooltipVisible}
+            content="You can edit your personal information, event preferences, and settings from here."
+            placement="top"
+            onNext={handleDismissProfileTooltip}
+            onClose={handleDismissProfileTooltip}
+            isLastStep={true}
+        >
+            <View style={{ width: '100%', height: '100%' }} />
+        </OnboardingTooltip>
+      </View>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}

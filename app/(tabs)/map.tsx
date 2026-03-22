@@ -3,6 +3,10 @@ import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Dimensions, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthManager } from '../../src/core/identity/AuthManager';
+import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
+import { useFocusEffect } from 'expo-router';
 import { EventController } from '../../src/controllers/EventController';
 import { EventManager } from '../../src/core/event/EventManager';
 import { useUIStore } from '../../src/store/uiStore';
@@ -42,9 +46,27 @@ const mapStyle = [
 ];
 
 export default function MapScreen() {
-    const { showToast, setGlobalLoading } = useUIStore();
+    const { showToast, setGlobalLoading, mapTooltipVisible, setMapTooltipVisible, handleDismissMapTooltip } = useUIStore();
     const [selectedCoord, setSelectedCoord] = useState<{ latitude: number, longitude: number } | null>(null);
     const [trendingEvents, setTrendingEvents] = useState<any[]>([]);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            const checkMapOnboarding = async () => {
+                try {
+                    const user = await AuthManager.getInstance().getCurrentUser();
+                    if (!user) return;
+                    const hasSeen = await AsyncStorage.getItem(`@has_seen_map_onboarding_${user.id}`);
+                    if (!hasSeen) {
+                        setTimeout(() => setMapTooltipVisible(true), 500);
+                    }
+                } catch (e) {
+                    console.warn(e);
+                }
+            };
+            checkMapOnboarding();
+        }, [])
+    );
 
     const [allEvents, setAllEvents] = useState<any[]>([]);
 
@@ -115,6 +137,17 @@ export default function MapScreen() {
 
     return (
         <SafeAreaView style={styles.safeArea}>
+            <View style={{ position: 'absolute', bottom: 10, left: '28%', width: 40, height: 10, zIndex: 999 }} pointerEvents="none">
+                <OnboardingTooltip
+                    isVisible={mapTooltipVisible}
+                    content="View events around you in real-time on the map."
+                    placement="top"
+                    onNext={handleDismissMapTooltip}
+                    onClose={handleDismissMapTooltip}
+                >
+                    <View style={{ width: '100%', height: '100%' }} />
+                </OnboardingTooltip>
+            </View>
             <View style={styles.container}>
                 <View style={styles.headerControls}>
                     <TouchableOpacity

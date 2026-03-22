@@ -17,6 +17,8 @@ import { AuthManager } from "../../src/core/identity/AuthManager";
 import { useUIStore } from "../../src/store/uiStore";
 import { ThemeColors } from "../../src/theme/colors";
 import { useTheme } from "../../src/theme/useTheme";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { OnboardingTooltip } from "../../src/components/OnboardingTooltip";
 
 // DI Stub
 const eventController = new EventController(
@@ -144,6 +146,14 @@ export default function HomeScreen() {
     }
   };
 
+  const { tooltipStep, handleNextTooltip, handleSkipTooltip } = useUIStore();
+
+  useEffect(() => {
+    if (tooltipStep === 1 || tooltipStep === -1) setActiveTab("friends");
+    else if (tooltipStep === 2) setActiveTab("my");
+    else if (tooltipStep === 3) setActiveTab("nearby");
+  }, [tooltipStep]);
+
   useEffect(() => {
     loadFeeds();
   }, [activeTab, radius]);
@@ -264,6 +274,18 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <View style={{ position: 'absolute', bottom: 10, left: '8%', width: 40, height: 10, zIndex: 999 }} pointerEvents="none">
+        <OnboardingTooltip
+          isVisible={tooltipStep === 0}
+          content="View nearby events and your friends from here."
+          placement="top"
+          onNext={handleNextTooltip}
+          onClose={handleSkipTooltip}
+        >
+          <View style={{ width: '100%', height: '100%' }} />
+        </OnboardingTooltip>
+      </View>
+
       <ScrollView
         style={styles.container}
         refreshControl={
@@ -304,6 +326,17 @@ export default function HomeScreen() {
             ]}
             onPress={() => setActiveTab("friends")}
           >
+            <View style={{position: 'absolute', width: '100%', height: 5, bottom: 0, justifyContent: 'center', alignItems: 'center'}} pointerEvents="none">
+              <OnboardingTooltip
+                isVisible={tooltipStep === 1}
+                content="Friends: Keep track of events organized or attended by your friends from this tab."
+                placement="bottom"
+                onNext={handleNextTooltip}
+                onClose={handleSkipTooltip}
+              >
+                <View style={{ width: 1, height: 1 }} />
+              </OnboardingTooltip>
+            </View>
             <Text
               style={[
                 styles.segmentText,
@@ -313,6 +346,7 @@ export default function HomeScreen() {
               Friends
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[
               styles.segmentBtn,
@@ -320,6 +354,17 @@ export default function HomeScreen() {
             ]}
             onPress={() => setActiveTab("my")}
           >
+            <View style={{position: 'absolute', width: '100%', height: 5, bottom: 0, justifyContent: 'center', alignItems: 'center'}} pointerEvents="none">
+              <OnboardingTooltip
+                isVisible={tooltipStep === 2}
+                content="My Events: You can manage the events you have created here."
+                placement="bottom"
+                onNext={handleNextTooltip}
+                onClose={handleSkipTooltip}
+              >
+                <View style={{ width: 1, height: 1 }} />
+              </OnboardingTooltip>
+            </View>
             <Text
               style={[
                 styles.segmentText,
@@ -329,6 +374,7 @@ export default function HomeScreen() {
               My Events
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[
               styles.segmentBtn,
@@ -336,6 +382,17 @@ export default function HomeScreen() {
             ]}
             onPress={() => setActiveTab("nearby")}
           >
+            <View style={{position: 'absolute', width: '100%', height: 5, bottom: 0, justifyContent: 'center', alignItems: 'center'}} pointerEvents="none">
+              <OnboardingTooltip
+                isVisible={tooltipStep === 3}
+                content="Nearby: Click here to discover the newest events closest to your location."
+                placement="bottom"
+                onNext={handleNextTooltip}
+                onClose={handleSkipTooltip}
+              >
+                <View style={{ width: 1, height: 1 }} />
+              </OnboardingTooltip>
+            </View>
             <Text
               style={[
                 styles.segmentText,

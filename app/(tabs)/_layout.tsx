@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
 import { Alert, Platform, View } from 'react-native';
+import { useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthManager } from '../../src/core/identity/AuthManager';
 import { UserManager } from '../../src/core/identity/UserManager';
 import { getLocationByLabel } from '../../src/data/locations';
@@ -10,6 +12,25 @@ import { useTheme } from '../../src/theme/useTheme';
 
 export default function TabLayout() {
     const theme = useTheme();
+    const { tooltipStep, setTooltipStep, handleNextTooltip, handleSkipTooltip } = useUIStore();
+
+    useEffect(() => {
+        const checkOnboarding = async () => {
+            try {
+                const user = await AuthManager.getInstance().getCurrentUser();
+                if (!user) return;
+
+                const key = `@has_seen_events_onboarding_${user.id}`;
+                const hasSeen = await AsyncStorage.getItem(key);
+                if (!hasSeen) {
+                    setTimeout(() => setTooltipStep(0), 500);
+                }
+            } catch (e) {
+                console.warn(e);
+            }
+        };
+        checkOnboarding();
+    }, []);
 
     return (
         <Tabs screenOptions={{
