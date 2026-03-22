@@ -76,6 +76,17 @@ export class AuthManager {
         // We call it with default/initial values
         const status = email.endsWith('.edu.tr') ? 'öğrenci' : 'çalışan';
         if (authData.user) {
+            // Force base_location update in case the Supabase trigger missed it from raw_user_meta_data
+            if (data.baseLocation) {
+                await this.supabaseClient.client
+                    .from('users')
+                    .update({ base_location: data.baseLocation })
+                    .eq('id', authData.user.id)
+                    .then(({ error }: any) => {
+                        if (error) console.error("Failed to force update base_location:", error);
+                    });
+            }
+
             VectorService.getInstance().generateUserEmbedding(authData.user.id, 0, status, [], true)
                 .catch((e: any) => console.error("Initial embedding generation failed:", e));
         }
