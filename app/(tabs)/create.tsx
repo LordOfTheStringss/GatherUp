@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AuthManager } from '../../src/core/identity/AuthManager';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
-import { useFocusEffect } from 'expo-router';
 import { EventController } from '../../src/controllers/EventController';
 import { ConflictEngine } from '../../src/core/event/ConflictEngine';
 import { EventManager } from '../../src/core/event/EventManager';
+import { AuthManager } from '../../src/core/identity/AuthManager';
+import { NotificationService } from '../../src/infra/NotificationService';
+import { SupabaseClient } from '../../src/infra/SupabaseClient';
 import { RecommendationEngine } from '../../src/intelligence/RecommendationEngine';
 import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
@@ -33,13 +34,46 @@ export default function CreateEventScreen() {
     const styles = createStyles(theme);
     const [activeTab, setActiveTab] = useState<'manual' | 'ai'>('manual');
 
+    const [currentUser, setCurrentUser] = useState<any>(null);
+    const [myFriends, setMyFriends] = useState<any[]>([]);
+    const [selectedFriends, setSelectedFriends] = useState<any[]>([]);
+    const [aiSuggestedFriends, setAiSuggestedFriends] = useState<any[]>([]); // Track friends included in AI plan
+
     useFocusEffect(
         React.useCallback(() => {
             const checkCreateOnboarding = async () => {
                 try {
-                    const user = await AuthManager.getInstance().getCurrentUser();
-                    if (!user) return;
-                    const hasSeen = await AsyncStorage.getItem(`@has_seen_create_onboarding_${user.id}`);
+                    const sessionUser = await AuthManager.getInstance().getCurrentUser();
+                    if (!sessionUser) return;
+
+                    const supabase = SupabaseClient.getInstance().client;
+                    const { data: dbUser } = await supabase.from('users').select('*').eq('id', sessionUser.id).single();
+
+                    if (dbUser) {
+                        setCurrentUser(dbUser);
+
+                        // Fetch the real friends of the user via the 'friendships' table (mutual follows)
+                        const { data: whoIFollow } = await supabase.from('friendships').select('friend_id').eq('user_id', sessionUser.id);
+                        const { data: whoFollowsMe } = await supabase.from('friendships').select('user_id').eq('friend_id', sessionUser.id);
+
+                        if (whoIFollow && whoFollowsMe) {
+                            const followIds = whoIFollow.map((f: any) => f.friend_id);
+                            const mutualIds = whoFollowsMe.filter((f: any) => followIds.includes(f.user_id)).map((f: any) => f.user_id);
+
+                            if (mutualIds.length > 0) {
+                                const { data: friendsData } = await supabase.from('users').select('*').in('id', mutualIds);
+                                if (friendsData) {
+                                    const parsedFriends = friendsData.map((f: any) => ({
+                                        ...f,
+                                        profileVector: typeof f.profile_vector === 'string' ? JSON.parse(f.profile_vector) : f.profile_vector
+                                    }));
+                                    setMyFriends(parsedFriends);
+                                }
+                            }
+                        }
+                    }
+
+                    const hasSeen = await AsyncStorage.getItem(`@has_seen_create_onboarding_${sessionUser.id}`);
                     if (!hasSeen) {
                         setTimeout(() => setCreateTooltipStep(0), 500);
                     }
@@ -134,7 +168,25 @@ export default function CreateEventScreen() {
                 location_lng: selectedLocation.longitude,
                 is_private: isPrivate
             } as any);
-            showToast('Event Created Successfully!', 'success');
+
+            // Event oluşturulduktan sonra, eğer AI tarafından önerilen user'lar varsa onlara notification gönderilecek
+            if (aiSuggestedFriends.length > 0 && currentUser) {
+                const notificationService = NotificationService.getInstance();
+                for (const friend of aiSuggestedFriends) {
+                    if (friend.id) {
+                        await notificationService.sendFriendEventNotification(
+                            friend.id,
+                            title,
+                            currentUser.full_name || "Your friend"
+                        );
+                    }
+                }
+                showToast(`Event Created & Invites sent to ${aiSuggestedFriends.length} friends!`, 'success');
+                setAiSuggestedFriends([]); // Reset state
+            } else {
+                showToast('Event Created Successfully!', 'success');
+            }
+
             router.back();
         } catch (e: any) {
             showToast(e.message || 'Creation failed', 'error');
@@ -146,23 +198,48 @@ export default function CreateEventScreen() {
     const handleAIPlan = async () => {
         setGlobalLoading(true);
         try {
-            // RecommendationEngine metot çıktısını buraya bağladık
-            const response = await eventController.getGroupAIPlan([]);
+            if (!currentUser) {
+                showToast("User session not found. Please log in again.", "error");
+                return;
+            }
 
-            if (response.status === 200) {
-                // Şimdilik mock verilerle devam ediliyor (metot içi boş olduğu için)
-                showToast('AI found a mutual free slot on Friday 18:00 for "Coffee"!', 'success');
+            // O anki userın kendisi (vector parse edilmiş hali) ve seçtiği arkadaşları
+            const myVector = typeof currentUser.profile_vector === 'string' ? JSON.parse(currentUser.profile_vector) : currentUser.profile_vector;
+            const currentUserWithVec = { ...currentUser, profileVector: myVector };
 
-                setTitle('Group Coffee');
-                setCategory('Social');
-                const suggestionDate = new Date();
-                suggestionDate.setDate(suggestionDate.getDate() + ((5 + 7 - suggestionDate.getDay()) % 7 || 7));
-                suggestionDate.setHours(18, 0, 0, 0);
-                setDate(suggestionDate);
+            const allPlanUsers = [currentUserWithVec, ...selectedFriends];
+
+            // RecommendationEngine üzerinden getGroupSuggestion'ı doğrudan çağırıyoruz
+            // Bu metod içeride 939 boyutlu input dizisini kendisi üretiyor
+            const suggestionResult = await recommendationEngine.getGroupSuggestion(allPlanUsers);
+
+            // The combined 939-dimensional input ready for ONNX:
+            const sharedEmbedding = suggestionResult.features;
+            // TODO: Run assets/models/group_model.onnx with sharedEmbedding
+
+            if (suggestionResult && suggestionResult.proposal) {
+                const prop = suggestionResult.proposal;
+                const catName = prop.suggestedCategory || 'Social';
+                const sDate = prop.suggestedTime || new Date();
+
+                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const dayStr = days[sDate.getDay()];
+                const hourStr = sDate.getHours().toString().padStart(2, '0');
+
+                showToast(`AI chose ${dayStr} ${hourStr}:00 for ${catName}!`, 'success');
+
+                // Verilerin otomatik olarak manuel event kısmına geçirilmesi (Autofill)
+                setTitle(`Group ${catName}`);
+                setCategory(catName);
+                setDate(sDate);
                 setIsPrivate(true);
+
+                // Gerçek arkadaş datasını Suggestion olarak devrettik ki Notification atabilelim.
+                setAiSuggestedFriends(selectedFriends);
+
                 setActiveTab('manual');
             } else {
-                showToast(response.message || 'AI Planning failed', 'error');
+                showToast('AI Planning failed', 'error');
             }
         } catch (e: any) {
             showToast(e.message || 'AI Planning failed', 'error');
@@ -324,6 +401,7 @@ export default function CreateEventScreen() {
             <Text style={styles.sectionTitle}>3. Location</Text>
             <View style={styles.mapContainer}>
                 <MapView
+                    provider={PROVIDER_GOOGLE}
                     style={{ flex: 1 }}
                     initialRegion={{
                         latitude: 39.92077,
@@ -382,23 +460,37 @@ export default function CreateEventScreen() {
             </View>
 
             <View style={styles.mockFriendList}>
-                <View style={styles.friendRow}>
-                    <View style={styles.friendAvatar}><Text style={styles.friendInitial}>E</Text></View>
-                    <View style={styles.friendInfo}>
-                        <Text style={styles.mockFriendName}>Emir</Text>
-                        <Text style={styles.friendStatusOnline}>Online • 2 km away</Text>
-                    </View>
-                    <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                </View>
-
-                <View style={[styles.friendRow, { borderBottomWidth: 0 }]}>
-                    <View style={[styles.friendAvatar, { backgroundColor: '#334155' }]}><Text style={styles.friendInitial}>A</Text></View>
-                    <View style={styles.friendInfo}>
-                        <Text style={styles.mockFriendName}>Ayşe</Text>
-                        <Text style={styles.friendStatusBusy}>In a meeting until 14:00</Text>
-                    </View>
-                    <Ionicons name="ellipse-outline" size={24} color="#64748B" />
-                </View>
+                {myFriends.length === 0 ? (
+                    <Text style={{ padding: 16, color: theme.textSecondary, textAlign: 'center' }}>You don't have any friends to include yet.</Text>
+                ) : (
+                    myFriends.map(friend => {
+                        const isSelected = selectedFriends.some((f: any) => f.id === friend.id);
+                        return (
+                            <TouchableOpacity
+                                key={friend.id}
+                                style={[styles.friendRow, isSelected && { backgroundColor: theme.primary + '10' }]}
+                                onPress={() => {
+                                    if (isSelected) {
+                                        setSelectedFriends(prev => prev.filter((f: any) => f.id !== friend.id));
+                                    } else {
+                                        setSelectedFriends(prev => [...prev, friend]);
+                                    }
+                                }}
+                            >
+                                <View style={styles.friendAvatar}>
+                                    <Text style={styles.friendInitial}>{friend.full_name ? friend.full_name.charAt(0) : 'F'}</Text>
+                                </View>
+                                <View style={styles.friendInfo}>
+                                    <Text style={styles.mockFriendName}>{friend.full_name}</Text>
+                                    <Text style={isSelected ? styles.friendStatusOnline : styles.friendStatusBusy}>
+                                        {isSelected ? 'Included in Plan' : 'Tap to Include'}
+                                    </Text>
+                                </View>
+                                <Ionicons name={isSelected ? "checkmark-circle" : "ellipse-outline"} size={24} color={isSelected ? "#10B981" : "#64748B"} />
+                            </TouchableOpacity>
+                        );
+                    })
+                )}
             </View>
 
             <TouchableOpacity style={styles.aiButton} onPress={handleAIPlan} activeOpacity={0.8}>

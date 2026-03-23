@@ -1,4 +1,5 @@
 import { Asset } from 'expo-asset';
+import { Platform } from 'react-native';
 import { Event, EventCategory, EventStatus, EventVisibility } from '../core/event/Event';
 import { User } from '../core/identity/User';
 import { BlockType, DataSource, TimeSlot } from '../core/schedule/TimeSlot';
@@ -10,6 +11,7 @@ export interface PlanProposal {
     suggestedTime?: Date;
     suggestedLocation?: Location;
     matchingEvents?: Event[];
+    suggestedCategory?: string;
 }
 
 export class RecommendationEngine {
@@ -28,21 +30,221 @@ export class RecommendationEngine {
      * Entry point for a quick, one-click event suggestion.
      * Uses the internal pipeline to find the best match.
      */
-    public async getOneTapSuggestion(user: User, loc: Location): Promise<Event[]> {
+    public async getOneTapSuggestion(user: any, loc: Location): Promise<Event[]> {
+        // Fallback for Supabase User object, which uses 'id' instead of 'userId'
+        const targetUserId = user.userId || user.id;
+
         return await this.fetchRecommendedEvents(
-            user.userId,
+            targetUserId,
             loc.coordinates.latitude,
             loc.coordinates.longitude
         );
     }
 
     /**
-     * Democratic Logic: 1. Calculate Centroid. 2. Find a common free slot.
-     * 3. Search events matching Centroid.
+     * Group Generative Model Input Builder
+     * Calculates the 939-dimensional input for group_model.onnx based on users' profile vectors and schedules.
      */
-    public getGroupSuggestion(users: User[]): PlanProposal {
-        // Stub implementation
-        return {};
+    public async getGroupSuggestion(users: User[]): Promise<{ features: Float32Array; proposal: PlanProposal }> {
+        const embDim = 384;
+        const numUsers = users.length;
+
+        let avgBase = new Float32Array(embDim);
+        let maxBase = new Float32Array(embDim).fill(-Infinity);
+        let diversityScore = 0.0;
+
+        // "sadece userların normal embdeddingi olucak"
+        const validUsers = users.filter(u => u.profileVector && u.profileVector.length === embDim);
+
+        if (validUsers.length > 0) {
+            // Calculate avg_base and max_base
+            for (let i = 0; i < embDim; i++) {
+                let sum = 0;
+                for (const u of validUsers) {
+                    const val = u.profileVector[i];
+                    sum += val;
+                    if (val > maxBase[i]) {
+                        maxBase[i] = val;
+                    }
+                }
+                avgBase[i] = sum / validUsers.length;
+            }
+
+            // Calculate diversity_score = mean(std(group_base_embs, axis=0))
+            let stdSum = 0;
+            for (let i = 0; i < embDim; i++) {
+                let varianceSum = 0;
+                for (const u of validUsers) {
+                    const diff = u.profileVector[i] - avgBase[i];
+                    varianceSum += diff * diff;
+                }
+                const std = Math.sqrt(varianceSum / validUsers.length);
+                stdSum += std;
+            }
+            diversityScore = stdSum / embDim;
+        } else {
+            maxBase.fill(0); // reset if no users
+        }
+
+        // Mocking group_mask_168 since schedule is not present in User model yet
+        // Simüle edilmiş takvim: Pazartesi - Cuma, 09:00 - 18:00 arası mesai/okul saatini (0) olarak işaretle.
+        const groupMask168 = new Float32Array(168).fill(1);
+        for (let d = 0; d < 5; d++) { // 0=Monday .. 4=Friday
+            for (let h = 9; h < 18; h++) { // 09:00 - 17:59
+                groupMask168[d * 24 + h] = 0;
+            }
+        }
+        const pCount = numUsers;
+        const actualFreeSlots = groupMask168.reduce((a, b) => a + b, 0);
+
+        // Concatenate all into a single Float32Array of length 939
+        // avg_base(384) + max_base(384) + div_feat(1) + p_count(1) + actual_free_slots(1) + group_mask_168(168) = 939
+        const combined = new Float32Array(939);
+        combined.set(avgBase, 0);
+        combined.set(maxBase, 384);
+        combined.set([diversityScore], 768);
+        combined.set([pCount], 769);
+        combined.set([actualFreeSlots], 770);
+        combined.set(groupMask168, 771);
+
+        console.log("Group model telefonda hazırlanıyor...");
+        let session;
+        let TensorClass;
+        let finalProposal: PlanProposal = { suggestedTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) };
+
+        try {
+            if (Platform.OS === 'web') throw new Error("ONNX not supported on web");
+
+            const modelAsset = await Asset.loadAsync(require('../../assets/models/gatherup_group_model_final.onnx'));
+            const modelUri = modelAsset[0].localUri || modelAsset[0].uri;
+
+            if (!modelUri) {
+                throw new Error("Grup modelinin yerel adresi bulunamadı!");
+            }
+
+            const ONNX = require('onnxruntime-react-native');
+            session = await ONNX.InferenceSession.create(modelUri);
+            TensorClass = ONNX.Tensor;
+
+            console.log("Veriler grup modeline sokuluyor (939 boyutlu)...");
+            const tensor = new TensorClass('float32', combined, [1, 939]);
+
+            const inputName = session.inputNames[0];
+            const feeds: any = {};
+            feeds[inputName] = tensor;
+
+            const results = await session.run(feeds);
+
+            // Extract tensors carefully depending on possible string names or just keys
+            const outKeys = Object.keys(results);
+            // Default mapping assuming order: cat, day, hour. Adjust if your names are different.
+            let catLogits: Float32Array = results[outKeys[0]].data as Float32Array;
+            let dayLogits: Float32Array = results[outKeys[1]].data as Float32Array;
+            let hourLogits: Float32Array = results[outKeys[2]].data as Float32Array;
+
+            // Optional: try matching by names like 'cat', 'day', 'hour' if they exist
+            for (const key of outKeys) {
+                if (key.includes('cat')) catLogits = results[key].data as Float32Array;
+                if (key.includes('day')) dayLogits = results[key].data as Float32Array;
+                if (key.includes('hour')) hourLogits = results[key].data as Float32Array;
+            }
+
+            // ─── Post-Processing: Softmax & Masking (Based on suggest_quality_plan_v4_detailed) ───
+            const softmax = (arr: Float32Array) => {
+                const max = Math.max(...Array.from(arr));
+                const exps = Array.from(arr).map(x => Math.exp(x - max));
+                const sum = exps.reduce((a, b) => a + b, 0);
+                return exps.map(x => x / sum);
+            };
+
+            const dayProbs = softmax(dayLogits);
+            const hourProbs = softmax(hourLogits);
+
+            // Get Current Time to form future_mask
+            const now = new Date();
+            // JS getDay(): 0=Sun, 1=Mon...6=Sat. Math logic assumes 0=Mon, 6=Sun.
+            let currentDayIdx = now.getDay() - 1;
+            if (currentDayIdx < 0) currentDayIdx = 6;
+            const currentHourIdx = now.getHours();
+
+            let bestScore = -1;
+            let bestIdx = -1;
+            let isNextWeek = false;
+
+            for (let d = 0; d < 7; d++) {
+                for (let h = 0; h < 24; h++) {
+                    const idx = d * 24 + h;
+                    const wMask = groupMask168[idx];
+                    const sMask = (h >= 11 && h < 21) ? 1.0 : 0.0; // strict_social_mask
+                    const fMask = (d > currentDayIdx || (d === currentDayIdx && h > currentHourIdx)) ? 1.0 : 0.0; // future_mask
+
+                    const score = dayProbs[d] * hourProbs[h] * wMask * sMask * fMask;
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestIdx = idx;
+                    }
+                }
+            }
+
+            // Fallback for next week if no valid slots this week
+            if (bestScore <= 1e-6) {
+                isNextWeek = true;
+                bestScore = -1;
+                for (let d = 0; d < 7; d++) {
+                    for (let h = 0; h < 24; h++) {
+                        const idx = d * 24 + h;
+                        const wMask = groupMask168[idx];
+                        const sMask = (h >= 11 && h < 21) ? 1.0 : 0.0;
+
+                        const score = dayProbs[d] * hourProbs[h] * wMask * sMask;
+
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestIdx = idx;
+                        }
+                    }
+                }
+            }
+
+            const resDay = Math.floor(bestIdx / 24);
+            const resHour = bestIdx % 24;
+
+            const catClasses = ['Academic', 'Gaming', 'Music', 'Social', 'Sports', 'Tech', 'Other'];
+            let maxCatVal = -Infinity;
+            let maxCatIdx = 0;
+            for (let i = 0; i < catLogits.length; i++) {
+                if (catLogits[i] > maxCatVal) {
+                    maxCatVal = catLogits[i];
+                    maxCatIdx = i;
+                }
+            }
+            const catName = catClasses[maxCatIdx] || 'Social';
+
+            const targetTime = new Date(now);
+            let daysToAdd = resDay - currentDayIdx;
+            if (isNextWeek || daysToAdd <= 0) daysToAdd += 7; // if in the past or exactly now, push to next week if isNextWeek
+
+            targetTime.setDate(targetTime.getDate() + daysToAdd);
+            targetTime.setHours(resHour, 0, 0, 0);
+
+            console.log("=".repeat(80));
+            console.log(`🚀 MODEL ÖNERİSİ : Day ${resDay} at ${resHour}:00 (${isNextWeek ? 'Önümüzdeki Hafta' : 'Bu Hafta'})`);
+            console.log(`✨ AKTİVİTE TÜRÜ : ${catName}`);
+
+            finalProposal = {
+                suggestedTime: targetTime,
+                suggestedCategory: catName
+            };
+
+        } catch (e) {
+            console.error("Grup modeli ONNX hata aldı:", e);
+        }
+
+        return {
+            features: combined,
+            proposal: finalProposal // Updated with actual model results
+        };
     }
 
     /**
@@ -264,7 +466,7 @@ export class RecommendationEngine {
             row.description || '',
             row.chat_room_id || '',
             (row.visibility as EventVisibility) || EventVisibility.PUBLIC,
-            (row.status as EventStatus) || EventStatus.OPEN
+            (row.status as EventStatus) || EventStatus.ONGOING
         );
 
         // Add dynamic properties for UI display (though not in the formal Event class properties, 

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Dimensions, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthManager } from '../../src/core/identity/AuthManager';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
@@ -164,6 +164,7 @@ export default function MapScreen() {
 
                 <View style={styles.mapContainer}>
                     <MapView
+                        provider={PROVIDER_GOOGLE}
                         style={styles.map}
                         customMapStyle={mapStyle}
                         initialRegion={{
