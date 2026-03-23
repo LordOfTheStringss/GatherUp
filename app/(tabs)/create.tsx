@@ -9,13 +9,17 @@ import { AuthManager } from '../../src/core/identity/AuthManager';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
 import { useFocusEffect } from 'expo-router';
 import { EventController } from '../../src/controllers/EventController';
+import { ConflictEngine } from '../../src/core/event/ConflictEngine';
 import { EventManager } from '../../src/core/event/EventManager';
+import { RecommendationEngine } from '../../src/intelligence/RecommendationEngine';
 import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
 import { useTheme } from '../../src/theme/useTheme';
 
-// DI Stub
-const eventController = new EventController(EventManager.getInstance(), {} as any, {} as any);
+// DI Setup
+const recommendationEngine = RecommendationEngine.getInstance();
+const conflictEngine = new ConflictEngine();
+const eventController = new EventController(EventManager.getInstance(), recommendationEngine, conflictEngine);
 
 export default function CreateEventScreen() {
     const { showToast, setGlobalLoading, createTooltipStep, setCreateTooltipStep, handleNextCreateTooltip, handleSkipCreateTooltip } = useUIStore();
@@ -142,23 +146,28 @@ export default function CreateEventScreen() {
     const handleAIPlan = async () => {
         setGlobalLoading(true);
         try {
-            // Wait for 2 seconds to simulate AI checking friends' schedules
-            setTimeout(() => {
-                setGlobalLoading(false);
+            // RecommendationEngine metot çıktısını buraya bağladık
+            const response = await eventController.getGroupAIPlan([]);
+
+            if (response.status === 200) {
+                // Şimdilik mock verilerle devam ediliyor (metot içi boş olduğu için)
                 showToast('AI found a mutual free slot on Friday 18:00 for "Coffee"!', 'success');
-                // Pre-fill manual form with AI suggestion for review
+
                 setTitle('Group Coffee');
                 setCategory('Social');
                 const suggestionDate = new Date();
                 suggestionDate.setDate(suggestionDate.getDate() + ((5 + 7 - suggestionDate.getDay()) % 7 || 7));
                 suggestionDate.setHours(18, 0, 0, 0);
                 setDate(suggestionDate);
-                setIsPrivate(true); // AI events are typically private group hangouts
+                setIsPrivate(true);
                 setActiveTab('manual');
-            }, 2000);
-        } catch (e) {
+            } else {
+                showToast(response.message || 'AI Planning failed', 'error');
+            }
+        } catch (e: any) {
+            showToast(e.message || 'AI Planning failed', 'error');
+        } finally {
             setGlobalLoading(false);
-            showToast('AI Planning failed', 'error');
         }
     };
 
