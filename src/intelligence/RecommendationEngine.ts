@@ -12,7 +12,32 @@ export interface PlanProposal {
     suggestedLocation?: Location;
     matchingEvents?: Event[];
     suggestedCategory?: string;
+    suggestedSubCategory?: string;
+    suggestedTitle?: string;
+    suggestedTags?: string;
 }
+
+export const EVENT_CLUSTERS: Record<string, string[]> = {
+    "Sports": [
+        "Volleyball", "Basketball", "Football", "Tennis", "Swimming", "Running", "Yoga", "Pilates",
+        "Fitness", "Skateboarding", "Cycling", "Archery", "Mountaineering", "Boxing", "Table Tennis"
+    ],
+    "Tech & Science": [
+        "Software", "Artificial Intelligence", "Data Science", "Cyber Security", "Robotics",
+        "Game Development", "Blockchain", "Astronomy", "Electronics"
+    ],
+    "Art & Culture": [
+        "Theater", "Cinema", "Concert", "Dance", "Painting", "Sculpture", "Literature",
+        "Photography", "Exhibition", "Stand-up Comedy", "Museums", "Opera"
+    ],
+    "Hobbies & Lifestyle": [
+        "Camping", "Chess", "Books", "Cooking", "Gastronomy", "E-sports",
+        "Gardening", "Travel", "Foreign Languages", "Collections", "Musical Instrument"
+    ],
+    "Social & Career": [
+        "Volunteering", "Networking", "Career Days", "Workshop"
+    ]
+};
 
 export class RecommendationEngine {
     private static instance: RecommendationEngine;
@@ -210,7 +235,7 @@ export class RecommendationEngine {
             const resDay = Math.floor(bestIdx / 24);
             const resHour = bestIdx % 24;
 
-            const catClasses = ['Academic', 'Gaming', 'Music', 'Social', 'Sports', 'Tech', 'Other'];
+            const catClasses = Object.values(EVENT_CLUSTERS).flat();
             let maxCatVal = -Infinity;
             let maxCatIdx = 0;
             for (let i = 0; i < catLogits.length; i++) {
@@ -219,7 +244,16 @@ export class RecommendationEngine {
                     maxCatIdx = i;
                 }
             }
-            const catName = catClasses[maxCatIdx] || 'Social';
+
+            const randomActivityTitle = catClasses[maxCatIdx] || 'Gönüllülük';
+
+            let catName = 'Sosyal_Kariyer';
+            for (const [cat, subCats] of Object.entries(EVENT_CLUSTERS)) {
+                if (subCats.includes(randomActivityTitle)) {
+                    catName = cat;
+                    break;
+                }
+            }
 
             const targetTime = new Date(now);
             let daysToAdd = resDay - currentDayIdx;
@@ -229,12 +263,15 @@ export class RecommendationEngine {
             targetTime.setHours(resHour, 0, 0, 0);
 
             console.log("=".repeat(80));
-            console.log(`🚀 MODEL ÖNERİSİ : Day ${resDay} at ${resHour}:00 (${isNextWeek ? 'Önümüzdeki Hafta' : 'Bu Hafta'})`);
-            console.log(`✨ AKTİVİTE TÜRÜ : ${catName}`);
+            console.log(`🚀 MODEL SUGGESTION : Day ${resDay} at ${resHour}:00 (${isNextWeek ? 'Next Week' : 'This Week'})`);
+            console.log(`✨ ACTIVITY TYPE : ${catName} -> ${randomActivityTitle}`);
 
             finalProposal = {
                 suggestedTime: targetTime,
-                suggestedCategory: catName
+                suggestedCategory: randomActivityTitle,
+                suggestedSubCategory: randomActivityTitle,
+                suggestedTitle: randomActivityTitle,
+                suggestedTags: ''
             };
 
         } catch (e) {
@@ -457,7 +494,7 @@ export class RecommendationEngine {
             row.id,
             row.organizer_id,
             row.title,
-            (row.category as EventCategory) || EventCategory.SOCIAL,
+            (row.category as EventCategory) || EventCategory.SOSYAL,
             row.sub_category || '',
             location,
             timeSlot,
