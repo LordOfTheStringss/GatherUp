@@ -401,7 +401,7 @@ export default function CreateEventScreen() {
             <Text style={styles.sectionTitle}>3. Location</Text>
             <View style={styles.mapContainer}>
                 <MapView
-                    provider={PROVIDER_GOOGLE}
+                    provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                     style={{ flex: 1 }}
                     initialRegion={{
                         latitude: 39.92077,
