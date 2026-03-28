@@ -125,8 +125,7 @@ export default function EditInterestsScreen() {
 
           const controller = new UserController(
             UserManager.getInstance(),
-            new FriendshipManager({} as any),
-            {} as any,
+            new FriendshipManager({} as any)
           );
           const res = await controller.getMyProfile();
 
@@ -163,8 +162,7 @@ export default function EditInterestsScreen() {
 
       const controller = new UserController(
         UserManager.getInstance(),
-        new FriendshipManager({} as any),
-        {} as any,
+        new FriendshipManager({} as any)
       );
 
       await controller.updateProfile(undefined, { interests: selected });

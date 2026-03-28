@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useUIStore } from '../../src/store/uiStore';
+import { useTheme } from '../../src/theme/useTheme';
+import { ThemeColors } from '../../src/theme/colors';
 
 // Mock data representing AI suggested events
 const SUGGESTED_EVENTS = [
@@ -13,6 +15,8 @@ const SUGGESTED_EVENTS = [
 ];
 
 export default function DiscoveryScreen() {
+    const theme = useTheme();
+    const styles = createStyles(theme);
     const { showToast } = useUIStore();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [likedEvents, setLikedEvents] = useState<string[]>([]);
@@ -29,7 +33,6 @@ export default function DiscoveryScreen() {
     };
 
     const finishOnboarding = () => {
-        // Here we would normally save likedEvents to the backend/store
         router.replace('/(tabs)');
     };
 
@@ -37,7 +40,7 @@ export default function DiscoveryScreen() {
         return (
             <View style={styles.container}>
                 <View style={styles.content}>
-                    <Ionicons name="checkmark-circle" size={80} color="#10B981" style={{ marginBottom: 24, alignSelf: 'center' }} />
+                    <Ionicons name="checkmark-circle" size={80} color={theme.success} style={{ marginBottom: 24, alignSelf: 'center' }} />
                     <Text style={styles.titleCentred}>You're All Set!</Text>
                     <Text style={styles.subtitleCentred}>You liked {likedEvents.length} events. We've optimized your feed based on these preferences.</Text>
 
@@ -70,11 +73,11 @@ export default function DiscoveryScreen() {
                             <Text style={styles.cardTitle}>{activeEvent.title}</Text>
 
                             <View style={styles.cardDetailRow}>
-                                <Ionicons name="time-outline" size={16} color="#94A3B8" />
+                                <Ionicons name="time-outline" size={16} color={theme.textSecondary} />
                                 <Text style={styles.cardDetailText}>{activeEvent.time}</Text>
                             </View>
                             <View style={styles.cardDetailRow}>
-                                <Ionicons name="location-outline" size={16} color="#94A3B8" />
+                                <Ionicons name="location-outline" size={16} color={theme.textSecondary} />
                                 <Text style={styles.cardDetailText}>{activeEvent.location}</Text>
                             </View>
                         </View>
@@ -84,35 +87,35 @@ export default function DiscoveryScreen() {
 
             <View style={styles.actions}>
                 <TouchableOpacity style={[styles.actionButton, styles.nopeButton]} onPress={() => handleSwipe(false)} activeOpacity={0.7}>
-                    <Ionicons name="close" size={36} color="#EF4444" />
+                    <Ionicons name="close" size={36} color={theme.danger} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={[styles.actionButton, styles.likeButton]} onPress={() => handleSwipe(true)} activeOpacity={0.7}>
-                    <Ionicons name="heart" size={32} color="#10B981" />
+                    <Ionicons name="heart" size={32} color={theme.success} />
                 </TouchableOpacity>
             </View>
         </View>
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0B1120' },
+const createStyles = (theme: ThemeColors) => StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.background },
 
     header: { paddingTop: 60, paddingHorizontal: 24, alignItems: 'center' },
-    title: { fontSize: 26, fontWeight: '800', color: '#F8FAFC', letterSpacing: 0.5 },
-    titleCentred: { fontSize: 32, fontWeight: '900', color: '#F8FAFC', textAlign: 'center', marginBottom: 12 },
-    subtitle: { fontSize: 15, color: '#94A3B8', marginTop: 8 },
-    subtitleCentred: { fontSize: 16, color: '#94A3B8', textAlign: 'center', lineHeight: 24, marginBottom: 40, paddingHorizontal: 20 },
-    counter: { fontSize: 13, color: '#3B82F6', marginTop: 12, fontWeight: '700', letterSpacing: 1 },
+    title: { fontSize: 26, fontWeight: '800', color: theme.textPrimary, letterSpacing: 0.5 },
+    titleCentred: { fontSize: 32, fontWeight: '900', color: theme.textPrimary, textAlign: 'center', marginBottom: 12 },
+    subtitle: { fontSize: 15, color: theme.textSecondary, marginTop: 8 },
+    subtitleCentred: { fontSize: 16, color: theme.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: 40, paddingHorizontal: 20 },
+    counter: { fontSize: 13, color: theme.primary, marginTop: 12, fontWeight: '700', letterSpacing: 1 },
 
     cardContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
     cardWrapper: {
         width: '100%',
         height: '85%',
-        backgroundColor: '#15202B',
+        backgroundColor: theme.card,
         borderRadius: 24,
         borderWidth: 1,
-        borderColor: '#1C2733',
+        borderColor: theme.cardBorder,
         overflow: 'hidden',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 12 },
@@ -121,12 +124,12 @@ const styles = StyleSheet.create({
         elevation: 12,
     },
     cardImagePlaceholder: { flex: 3, justifyContent: 'center', alignItems: 'center' },
-    cardContent: { flex: 2, padding: 24, backgroundColor: '#15202B' },
-    cardBadge: { alignSelf: 'flex-start', backgroundColor: '#1C2733', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#334155' },
-    cardBadgeText: { color: '#E2E8F0', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-    cardTitle: { fontSize: 28, fontWeight: '800', color: '#F8FAFC', marginBottom: 16, lineHeight: 34 },
+    cardContent: { flex: 2, padding: 24, backgroundColor: theme.card },
+    cardBadge: { alignSelf: 'flex-start', backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: theme.cardBorder },
+    cardBadgeText: { color: theme.textPrimary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+    cardTitle: { fontSize: 28, fontWeight: '800', color: theme.textPrimary, marginBottom: 16, lineHeight: 34 },
     cardDetailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-    cardDetailText: { color: '#94A3B8', fontSize: 15, marginLeft: 8, fontWeight: '500' },
+    cardDetailText: { color: theme.textSecondary, fontSize: 15, marginLeft: 8, fontWeight: '500' },
 
     actions: { flexDirection: 'row', justifyContent: 'center', gap: 40, paddingBottom: 60 },
     actionButton: {
@@ -135,10 +138,10 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
     },
-    nopeButton: { backgroundColor: '#15202B', borderWidth: 2, borderColor: '#EF4444', shadowColor: '#EF4444' },
-    likeButton: { backgroundColor: '#15202B', borderWidth: 2, borderColor: '#10B981', shadowColor: '#10B981' },
+    nopeButton: { backgroundColor: theme.card, borderWidth: 2, borderColor: theme.danger, shadowColor: theme.danger },
+    likeButton: { backgroundColor: theme.card, borderWidth: 2, borderColor: theme.success, shadowColor: theme.success },
 
     content: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
-    button: { backgroundColor: '#3B82F6', height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
+    button: { backgroundColor: theme.primary, height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: theme.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
     buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
 });

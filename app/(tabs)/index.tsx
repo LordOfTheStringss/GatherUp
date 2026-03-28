@@ -33,8 +33,10 @@ interface EventStub {
   category: string;
   time: string;
   capacity: number;
+  participantCount: number;
   location: string;
   host: string;
+  role?: 'hosted' | 'attending';
 }
 
 export default function HomeScreen() {
@@ -93,11 +95,11 @@ export default function HomeScreen() {
           : { category: "All", userId: user.id },
       );
 
-      let myRes: any = { data: [] };
+      let myData: any[] = [];
       let friendsRes: any = { data: [] };
 
       if (user) {
-        myRes = await eventController.getEvents({ organizerId: user.id });
+        myData = await EventManager.getInstance().getMyEventsIncludingAttended(user.id);
         friendsRes = await eventController.getEvents({
           category: "All",
           friendsOnly: true,
@@ -118,9 +120,11 @@ export default function HomeScreen() {
               })
             : "TBD",
           capacity: e.max_capacity || 0,
-          location: e.location_id || "Campus",
+          participantCount: e.participant_count || 0,
+          location: e.location_name || e.location_id || "Campus",
           host: e.users?.full_name || "Anonymous",
           organizer_id: e.organizer_id,
+          role: e._role,
         }));
 
       if (nearbyRes.data) {
@@ -138,11 +142,16 @@ export default function HomeScreen() {
           : friendsRes.data;
         setFriendsEvents(mapEvents(filteredFriends));
       }
-      if (myRes.data) {
-        setMyEvents(mapEvents(myRes.data));
+      if (myData) {
+        // Double check local filter for "my" feed just in case
+        const now = new Date().toISOString();
+        const activeMyEvents = myData.filter((e: any) => e.end_time >= now);
+        setMyEvents(mapEvents(activeMyEvents));
       }
     } catch (e) {
       showToast("Failed to load events", "error");
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -217,10 +226,10 @@ export default function HomeScreen() {
             <View
               style={[
                 styles.categoryBadge,
-                { backgroundColor: "rgba(59, 130, 246, 0.1)" },
+                { backgroundColor: theme.primaryLight },
               ]}
             >
-              <Text style={[styles.eventCategory, { color: "#3B82F6" }]}>
+              <Text style={[styles.eventCategory, { color: theme.primary }]}>
                 {item.category}
               </Text>
             </View>
@@ -249,7 +258,9 @@ export default function HomeScreen() {
               color={theme.textSecondary}
               style={{ marginRight: 4 }}
             />
-            <Text style={styles.eventCapacity}>{item.capacity} capacity</Text>
+            <Text style={styles.eventCapacity}>
+              {item.participantCount}{item.capacity && Number.isFinite(item.capacity) && item.capacity > 0 ? `/${item.capacity}` : ''}
+            </Text>
           </View>
         </View>
         <Text style={styles.eventTitle} numberOfLines={2}>
@@ -292,7 +303,7 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#3B82F6"
+            tintColor={theme.primary}
           />
         }
       >
@@ -300,7 +311,7 @@ export default function HomeScreen() {
           <View style={styles.headerLeft}>
             <View style={styles.headerTextContainer}>
               <Text style={styles.greeting}>
-                Gather<Text style={{ color: "#3B82F6" }}>Up</Text>
+                Gather<Text style={{ color: theme.primary }}>Up</Text>
               </Text>
             </View>
           </View>
@@ -460,7 +471,7 @@ export default function HomeScreen() {
               ))
             ) : (
               <Text style={styles.emptyStateText}>
-                You have not created any events yet.
+                No events yet — host or join one!
               </Text>
             ))}
 

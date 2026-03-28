@@ -19,7 +19,7 @@ export class UserManager {
         return UserManager.instance;
     }
 
-    public async updateProfile(userId: string, data: { name?: string, bio?: string, interests?: string[], profilePhoto?: string, baseLocation?: string }): Promise<void> {
+    public async updateProfile(userId: string, data: { name?: string, bio?: string, interests?: string[], profilePhoto?: string, baseLocation?: string, currentStatus?: string }): Promise<void> {
         const updateData: any = {};
         if (data.name) updateData.full_name = data.name;
 
@@ -34,6 +34,7 @@ export class UserManager {
         if (data.interests) updateData.interest_tags = data.interests;
         if (data.profilePhoto) updateData.profile_image = data.profilePhoto;
         if (data.baseLocation !== undefined) updateData.base_location = data.baseLocation;
+        if (data.currentStatus) updateData.current_status = data.currentStatus;
 
         if (Object.keys(updateData).length === 0) return;
 

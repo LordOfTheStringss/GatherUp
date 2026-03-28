@@ -82,6 +82,13 @@ export class EventManager {
             description: eventData.description
         }).catch((e: any) => console.error("Failed to generate event embedding:", e));
 
+        // Auto-block organizer's calendar
+        import('../../core/schedule/ScheduleManager').then(({ ScheduleManager }) => {
+            new ScheduleManager().addEventBlock(
+                organizerId, startTime, endTime, eventData.title, data.id
+            );
+        }).catch(e => console.error("Failed to block calendar:", e));
+
         return data;
     }
 
@@ -105,6 +112,80 @@ export class EventManager {
 
         for (const targetId of friendsIds) {
             await notifService.sendFriendEventNotification(targetId, eventTitle, user.full_name);
+        }
+    }
+
+    /**
+     * Fetches events the user either hosts or has joined (attended).
+     * Returns a combined, deduplicated list with participant counts and role.
+     */
+    public async getMyEventsIncludingAttended(userId: string): Promise<any[]> {
+        // 1. Events I organized
+        const { data: hosted, error: hostedErr } = await this.supabaseClient.client
+            .from('events')
+            .select('*, users!events_organizer_id_fkey(full_name)')
+            .eq('organizer_id', userId)
+            .gte('end_time', new Date().toISOString());
+
+        if (hostedErr) console.error('Hosted events error:', hostedErr);
+
+        // 2. Events I joined (via event_participants)
+        const { data: participations, error: partErr } = await this.supabaseClient.client
+            .from('event_participants')
+            .select('event_id, events(*, users!events_organizer_id_fkey(full_name))')
+            .eq('user_id', userId);
+
+        if (partErr) console.error('Participated events error:', partErr);
+
+        // 3. Get participant counts for all relevant events
+        const hostedList = (hosted || []).map((e: any) => ({ ...e, _role: 'hosted' }));
+        const attendedList = (participations || [])
+            .map((p: any) => p.events)
+            .filter((e: any) => e && new Date(e.end_time) >= new Date())
+            .map((e: any) => ({ ...e, _role: 'attending' }));
+
+        // 4. Merge & deduplicate (hosted takes priority)
+        const eventMap = new Map<string, any>();
+        for (const e of hostedList) eventMap.set(e.id, e);
+        for (const e of attendedList) {
+            if (!eventMap.has(e.id)) eventMap.set(e.id, e);
+        }
+
+        // 5. Filter out events that have already ended
+        const now = new Date().toISOString();
+        const activeEvents = Array.from(eventMap.values()).filter(e => e.end_time >= now);
+        
+        // 6. Fetch participant counts for all events
+        const eventIds = activeEvents.map(e => e.id);
+        
+        if (eventIds.length > 0) {
+            const { data: counts } = await this.supabaseClient.client
+                .from('event_participants')
+                .select('event_id')
+                .in('event_id', eventIds);
+
+            const countMap: Record<string, number> = {};
+            (counts || []).forEach((c: any) => {
+                countMap[c.event_id] = (countMap[c.event_id] || 0) + 1;
+            });
+
+            activeEvents.forEach(e => {
+                e.participant_count = countMap[e.id] || 0;
+            });
+        }
+
+        return activeEvents;
+    }
+
+    public async endEvent(eventId: string): Promise<void> {
+        const { error } = await this.supabaseClient.client
+            .from('events')
+            .update({ end_time: new Date().toISOString() })
+            .eq('id', eventId);
+
+        if (error) {
+            console.error('End event error:', error);
+            throw new Error(error.message);
         }
     }
 
@@ -258,6 +339,20 @@ export class EventManager {
                     participant.full_name
                 );
             }
+        }
+
+        // 5. Auto-block participant's calendar
+        try {
+            const { ScheduleManager } = await import('../../core/schedule/ScheduleManager');
+            await new ScheduleManager().addEventBlock(
+                userId,
+                new Date(eventData.start_time),
+                new Date(eventData.end_time),
+                eventData.title,
+                eventId
+            );
+        } catch (e) {
+            console.error("Failed to block calendar on join:", e);
         }
     }
     public async getEventParticipants(eventId: string): Promise<any[]> {

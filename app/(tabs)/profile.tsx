@@ -121,6 +121,11 @@ export default function ProfileScreen() {
   const [baseLocation, setBaseLocation] = useState<string | null>(null);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Event History Modal
+  const [eventHistoryVisible, setEventHistoryVisible] = useState(false);
+  const [eventHistoryType, setEventHistoryType] = useState<'hosted' | 'attended'>('hosted');
+  const [eventHistoryData, setEventHistoryData] = useState<any[]>([]);
 
   // TAKVİM İÇİN SEÇİLİ GÜN STATE'İ
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -145,8 +150,7 @@ export default function ProfileScreen() {
 
           const userController = new UserController(
             UserManager.getInstance(),
-            new FriendshipManager({} as any),
-            new GamificationManager()
+            new FriendshipManager({} as any)
           );
           const res = await userController.getMyProfile();
 
@@ -163,6 +167,7 @@ export default function ProfileScreen() {
                 reputationScore: res.data.xp || 0,
               });
             }
+            setIsAvailable(res.data.currentStatus === 'available');
           }
 
           const { ScheduleController } =
@@ -178,19 +183,19 @@ export default function ProfileScreen() {
           );
           const scheduleRes = await scheduleController.getMySchedule(
             new Date(),
+            user?.id
           );
 
           if (scheduleRes.status === 200 && scheduleRes.data?.busyBlocks) {
             setSchedule(scheduleRes.data.busyBlocks);
-          } else {
-            setSchedule([]);
-          }
-        } catch (e) {
-          console.error("Profile load err", e);
-        } finally {
-          setIsLoading(false);
         }
-      };
+      } catch (e) {
+        console.error("Profile load err", e);
+      } finally {
+        setIsLoading(false);
+        setGlobalLoading(false);
+      }
+    };
       fetchProfileData();
     }, []),
   );
@@ -200,8 +205,16 @@ export default function ProfileScreen() {
       if (!s.startTime) return false;
       const st = new Date(s.startTime);
       const et = new Date(s.endTime);
+
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const localDateStr = `${st.getFullYear()}-${pad(st.getMonth() + 1)}-${pad(st.getDate())}`;
+
+      const isDateMatch = s.isRecurring
+        ? st.getDay() === activeDayIndex
+        : localDateStr === selectedDate;
+
       return (
-        st.getDay() === activeDayIndex &&
+        isDateMatch &&
         st.getHours() <= hourInt &&
         et.getHours() > hourInt
       );
@@ -225,6 +238,45 @@ export default function ProfileScreen() {
       setFriendsModalVisible(true);
     } catch (e: any) {
       showToast(e.message, "error");
+    } finally {
+      setGlobalLoading(false);
+    }
+  };
+
+  const loadEventHistory = async (type: 'hosted' | 'attended') => {
+    try {
+      setGlobalLoading(true);
+      setEventHistoryType(type);
+      const { AuthManager } = await import("../../src/core/identity/AuthManager");
+      const { SupabaseClient } = await import("../../src/infra/SupabaseClient");
+      const user = await AuthManager.getInstance().getCurrentUser();
+      if (!user) throw new Error("Not auth");
+      const sb = SupabaseClient.getInstance().client;
+
+      let events: any[] = [];
+
+      if (type === 'hosted') {
+        const { data, error } = await sb
+          .from('events')
+          .select('*')
+          .eq('organizer_id', user.id)
+          .order('start_time', { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        events = data || [];
+      } else {
+        const { data } = await sb
+          .from('event_participants')
+          .select('event_id, events(*, users!events_organizer_id_fkey(full_name))')
+          .eq('user_id', user.id);
+        
+        events = (data || []).map((p: any) => p.events).filter(Boolean);
+      }
+
+      setEventHistoryData(events);
+      setEventHistoryVisible(true);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load events', 'error');
     } finally {
       setGlobalLoading(false);
     }
@@ -378,17 +430,22 @@ export default function ProfileScreen() {
           <Text style={styles.userEmail}>{userEmail}</Text>
         </View>
 
+        <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+          <Text style={{ textAlign: 'center', color: theme.danger, fontSize: 13, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Emergency Action</Text>
+          <PanicButton />
+        </View>
+
         {/* Stats Section */}
         <View style={styles.statsContainer}>
-          <View style={styles.statBox}>
+          <TouchableOpacity style={styles.statBox} onPress={() => loadEventHistory('attended')}>
             <Text style={styles.statValue}>{stats.eventsAttended}</Text>
-            <Text style={styles.statLabel}>Attended</Text>
-          </View>
+            <Text style={[styles.statLabel, { color: theme.primary }]}>Attended</Text>
+          </TouchableOpacity>
           <View style={styles.statBorder} />
-          <View style={styles.statBox}>
+          <TouchableOpacity style={styles.statBox} onPress={() => loadEventHistory('hosted')}>
             <Text style={styles.statValue}>{stats.eventsHosted}</Text>
-            <Text style={styles.statLabel}>Hosted</Text>
-          </View>
+            <Text style={[styles.statLabel, { color: theme.primary }]}>Hosted</Text>
+          </TouchableOpacity>
           <View style={styles.statBorder} />
           <TouchableOpacity style={styles.statBox} onPress={loadFriends}>
             <Text style={styles.statValue}>{stats.trustedCircleCount}</Text>
@@ -413,7 +470,21 @@ export default function ProfileScreen() {
               styles.availabilityToggle,
               isAvailable ? styles.toggleAvailable : styles.toggleBusy,
             ]}
-            onPress={() => setIsAvailable(!isAvailable)}
+            onPress={async () => {
+              const newStatus = !isAvailable;
+              setIsAvailable(newStatus);
+              try {
+                const { UserController } = await import("../../src/controllers/UserController");
+                const { UserManager } = await import("../../src/core/identity/UserManager");
+                const { FriendshipManager } = await import("../../src/core/identity/FriendshipManager");
+                const controller = new UserController(UserManager.getInstance(), new FriendshipManager({} as any));
+                await controller.updateProfile(undefined, { currentStatus: newStatus ? 'available' : 'busy' });
+              } catch (e) {
+                console.error("Failed to update status:", e);
+                showToast("Failed to update status", "error");
+                setIsAvailable(!newStatus); // Revert
+              }
+            }}
           >
             <View style={styles.toggleKnobWrapper}>
               <View
@@ -505,7 +576,12 @@ export default function ProfileScreen() {
             <Text style={styles.showcaseTitle}>Schedule & Calendar</Text>
             <TouchableOpacity
               style={styles.editScheduleBtn}
-              onPress={() => router.push("/ocr-schedule")}
+              onPress={() =>
+                router.push({
+                  pathname: "/ocr-schedule",
+                  params: { date: selectedDate, day: activeDayIndex },
+                })
+              }
             >
               <Ionicons name="create-outline" size={14} color="#FFF" />
               <Text style={styles.editScheduleText}>Edit</Text>
@@ -561,7 +637,19 @@ export default function ProfileScreen() {
                 slot.metadata?.type === "Müsait" ||
                 slot.metadata?.type === "Available";
               return (
-                <View style={styles.timelineRow} key={`hour-${h}`}>
+                <TouchableOpacity 
+                  style={styles.timelineRow} 
+                  key={`hour-${h}`}
+                  onPress={() => {
+                    if (slot.metadata?.eventId) {
+                      router.push({
+                        pathname: "/event/[id]",
+                        params: { id: slot.metadata.eventId }
+                      });
+                    }
+                  }}
+                  disabled={isM}
+                >
                   <Text style={styles.timeLabel}>
                     {h.toString().padStart(2, "0")}:00
                   </Text>
@@ -600,7 +688,7 @@ export default function ProfileScreen() {
                       </View>
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
 
@@ -640,7 +728,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Account Setup</Text>
-          <PanicButton />
 
           <TouchableOpacity
             style={[styles.actionRow, { marginTop: 12 }]}
@@ -713,6 +800,64 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Event History Modal */}
+      {eventHistoryVisible && (
+        <View style={StyleSheet.absoluteFillObject}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)" }}
+            onPress={() => setEventHistoryVisible(false)}
+          />
+          <View style={[styles.modalContent, { maxHeight: '70%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {eventHistoryType === 'hosted' ? '🎤 Events You Hosted' : '🎫 Events You Attended'}
+              </Text>
+              <TouchableOpacity onPress={() => setEventHistoryVisible(false)}>
+                <Ionicons name="close" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {eventHistoryData.length === 0 ? (
+                <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingVertical: 40, fontSize: 15 }}>
+                  No events yet.
+                </Text>
+              ) : (
+                eventHistoryData.map((event: any, idx: number) => (
+                  <TouchableOpacity
+                    key={event.id || idx}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: 14,
+                      paddingHorizontal: 16,
+                      borderBottomWidth: idx < eventHistoryData.length - 1 ? 1 : 0,
+                      borderBottomColor: theme.cardBorder,
+                    }}
+                    onPress={() => {
+                      setEventHistoryVisible(false);
+                      router.push(`/event/${event.id}`);
+                    }}
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: theme.primaryLight, justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
+                      <Ionicons name={eventHistoryType === 'hosted' ? "mic" : "ticket"} size={20} color={theme.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.textPrimary, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>{event.title}</Text>
+                      <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>
+                        {event.start_time ? new Date(event.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD'}
+                        {event.sub_category ? ` · ${event.sub_category}` : ''}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
 
       {/* Friends Modal */}
       {friendsModalVisible && (

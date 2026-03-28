@@ -1,45 +1,54 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, ScrollView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, FlatList, KeyboardAvoidingView, ScrollView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions } from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useUIStore } from '../../src/store/uiStore';
+import { getColorForTag, getCategoryForTag } from '../../src/data/interestTags';
+import { useTheme } from '../../src/theme/useTheme';
+import { ThemeColors } from '../../src/theme/colors';
+
+const { width } = Dimensions.get('window');
 
 const BADGE_CONFIG: Record<string, { icon: string; title: string; color: string; desc: string }> = {
-  FIRST_STEP: { icon: "footsteps", title: "First Step", color: "#3B82F6", desc: "1 Event Attended" },
-  THE_REGULAR: { icon: "calendar", title: "The Regular", color: "#8B5CF6", desc: "10 Events Attended" },
-  COMMUNITY_LEGEND: { icon: "star", title: "Community Legend", color: "#F59E0B", desc: "50 Events Attended" },
-  THE_HOST: { icon: "home", title: "The Host", color: "#10B981", desc: "1 Event Hosted" },
-  ACTIVE_ORGANIZER: { icon: "megaphone", title: "Active Organizer", color: "#EC4899", desc: "10 Events Hosted" },
-  LISAN_AL_GAIB: { icon: "planet", title: "Lisan al-Gaib", color: "#F43F5E", desc: "30 Events Hosted" },
-  TEAM_SPIRIT: { icon: "people", title: "Team Spirit", color: "#06B6D4", desc: "1 Group AI Plan" },
-  THE_COORDINATOR: { icon: "options", title: "The Coordinator", color: "#6366F1", desc: "10 Group Plans" },
-  THE_GANGMAKER: { icon: "flame", title: "The GangMaker", color: "#EAB308", desc: "25 Group Plans" },
-  SPONTANEOUS: { icon: "flash", title: "Spontaneous", color: "#14B8A6", desc: "1 AI Suggestion" },
-  THE_ADVENTURER: { icon: "compass", title: "The Adventurer", color: "#D946EF", desc: "10 AI Suggestions" },
-  INDIANA_JONES: { icon: "map", title: "Indiana Jones", color: "#84CC16", desc: "25 AI Suggestions" },
+    FIRST_STEP: { icon: "footsteps", title: "First Step", color: "#3B82F6", desc: "1 Event Attended" },
+    THE_REGULAR: { icon: "calendar", title: "The Regular", color: "#8B5CF6", desc: "10 Events Attended" },
+    COMMUNITY_LEGEND: { icon: "star", title: "Community Legend", color: "#F59E0B", desc: "50 Events Attended" },
+    THE_HOST: { icon: "home", title: "The Host", color: "#10B981", desc: "1 Event Hosted" },
+    ACTIVE_ORGANIZER: { icon: "megaphone", title: "Active Organizer", color: "#EC4899", desc: "10 Events Hosted" },
+    LISAN_AL_GAIB: { icon: "planet", title: "Lisan al-Gaib", color: "#F43F5E", desc: "30 Events Hosted" },
+    TEAM_SPIRIT: { icon: "people", title: "Team Spirit", color: "#06B6D4", desc: "1 Group AI Plan" },
+    THE_COORDINATOR: { icon: "options", title: "The Coordinator", color: "#6366F1", desc: "10 Group Plans" },
+    THE_GANGMAKER: { icon: "flame", title: "The GangMaker", color: "#EAB308", desc: "25 Group Plans" },
+    SPONTANEOUS: { icon: "flash", title: "Spontaneous", color: "#14B8A6", desc: "1 AI Suggestion" },
+    THE_ADVENTURER: { icon: "compass", title: "The Adventurer", color: "#D946EF", desc: "10 AI Suggestions" },
+    INDIANA_JONES: { icon: "map", title: "Indiana Jones", color: "#84CC16", desc: "25 AI Suggestions" },
 };
 
 export default function EventDetailScreen() {
     const { id } = useLocalSearchParams();
     const { showToast } = useUIStore();
+    const theme = useTheme();
+    const styles = createStyles(theme);
 
     const [inputText, setInputText] = useState('');
     const [messages, setMessages] = useState<any[]>([]);
-    const [showBadgePopup, setShowBadgePopup] = useState(false);
     const [selectedParticipant, setSelectedParticipant] = useState<any | null>(null);
     const [showParticipantModal, setShowParticipantModal] = useState(false);
+    const [showChat, setShowChat] = useState(false);
 
     const [currentUserId, setCurrentUserId] = useState<string>('');
     const [hasJoined, setHasJoined] = useState(false);
     const [isHost, setIsHost] = useState(false);
     const [participants, setParticipants] = useState<any[]>([]);
+    const [eventDetails, setEventDetails] = useState<any | null>(null);
+    const [organizerName, setOrganizerName] = useState('');
 
     useEffect(() => {
         let channel: any;
 
         const fetchEventData = async () => {
             try {
-                // Auth
                 const { AuthManager } = await import('../../src/core/identity/AuthManager');
                 const session = await AuthManager.getInstance().getCurrentUser();
                 if (session) setCurrentUserId(session.id);
@@ -47,16 +56,21 @@ export default function EventDetailScreen() {
                 const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
                 const supabase = SupabaseClient.getInstance().client;
 
-                // Fetch event details to check if host
+                // Fetch full event details
                 const { data: evData } = await supabase
                     .from('events')
-                    .select('organizer_id')
+                    .select('*, users!events_organizer_id_fkey(id, full_name, profile_image, badges)')
                     .eq('id', id)
                     .single();
 
-                if (evData && session && evData.organizer_id === session.id) {
-                    setIsHost(true);
-                    setHasJoined(true);
+                if (evData) {
+                    setEventDetails(evData);
+                    setOrganizerName(evData.users?.full_name || 'Anonymous');
+
+                    if (session && evData.organizer_id === session.id) {
+                        setIsHost(true);
+                        setHasJoined(true);
+                    }
                 }
 
                 // Fetch participants
@@ -65,11 +79,36 @@ export default function EventDetailScreen() {
                 const evController = new EventController(EventManager.getInstance(), {} as any, {} as any);
                 const pRes = await evController.getParticipants(id as string);
 
+                let loadedParts: any[] = [];
                 if (pRes.status === 200 && pRes.data) {
-                    setParticipants(pRes.data);
-                    if (session && pRes.data.some((p: any) => p.id === session.id)) {
-                        setHasJoined(true);
+                    loadedParts = [...pRes.data];
+                }
+
+                // Ensure organizer is always in the list
+                if (evData) {
+                    const orgId = evData.organizer_id;
+                    const hostAlreadyIn = loadedParts.some((p: any) => p.id === orgId);
+                    
+                    if (!hostAlreadyIn) {
+                        // Fallback host object if evData.users relationship failed
+                        const hostObj = evData.users ? {
+                            id: orgId,
+                            full_name: evData.users.full_name,
+                            profile_image: evData.users.profile_image,
+                            badges: evData.users.badges
+                        } : {
+                            id: orgId,
+                            full_name: 'Organizer',
+                            profile_image: null,
+                            badges: []
+                        };
+                        loadedParts.unshift(hostObj);
                     }
+                }
+
+                setParticipants(loadedParts);
+                if (session && loadedParts.some((p: any) => p.id === session.id)) {
+                    setHasJoined(true);
                 }
 
                 // Fetch Chat History
@@ -91,7 +130,6 @@ export default function EventDetailScreen() {
                         { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `event_id=eq.${id}` },
                         (payload: any) => {
                             const newMsg = payload.new;
-                            // Enrich with user name from participants list
                             setParticipants((currentParticipants) => {
                                 const sender = currentParticipants.find(p => p.id === newMsg.sender_id);
                                 if (sender) {
@@ -100,7 +138,6 @@ export default function EventDetailScreen() {
                                 return currentParticipants;
                             });
                             setMessages((prev) => {
-                                // Deduplicate by ID or content/sender if temp
                                 const exists = prev.some(m => m.id === newMsg.id || (m.content === newMsg.content && m.sender_id === newMsg.sender_id && m.id.startsWith('temp-')));
                                 if (exists) {
                                     return prev.map(m => (m.content === newMsg.content && m.sender_id === newMsg.sender_id && m.id.startsWith('temp-')) ? newMsg : m);
@@ -124,50 +161,52 @@ export default function EventDetailScreen() {
     }, [id]);
 
     const handleJoinEvent = async () => {
-        try {
-            const { EventController } = await import('../../src/controllers/EventController');
-            const { EventManager } = await import('../../src/core/event/EventManager');
-            const evController = new EventController(EventManager.getInstance(), {} as any, {} as any);
+        Alert.alert("Join Event", "Are you sure you want to join this event?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Join", onPress: async () => {
+                try {
+                    const { EventController } = await import('../../src/controllers/EventController');
+                    const { EventManager } = await import('../../src/core/event/EventManager');
+                    const evController = new EventController(EventManager.getInstance(), {} as any, {} as any);
 
-            const res = await evController.joinEvent(id as string);
-            if (res.status === 200) {
-                showToast("Successfully joined event!", "success");
-                setHasJoined(true);
-                // Optimistically add me to participants
-                const { AuthManager } = await import('../../src/core/identity/AuthManager');
-                const user = await AuthManager.getInstance().getCurrentUser();
-                if (user) {
-                    // Quick fetch for full name
-                    const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
-                    const { data: me } = await SupabaseClient.getInstance().client.from('users').select('id, full_name, profile_image').eq('id', user.id).single();
-                    if (me) {
-                        setParticipants(prev => [...prev, me]);
+                    const res = await evController.joinEvent(id as string);
+                    if (res.status === 200) {
+                        showToast("Successfully joined event!", "success");
+                        setHasJoined(true);
+                        const { AuthManager } = await import('../../src/core/identity/AuthManager');
+                        const user = await AuthManager.getInstance().getCurrentUser();
+                        if (user) {
+                            const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+                            const { data: me } = await SupabaseClient.getInstance().client.from('users').select('id, full_name, profile_image, badges').eq('id', user.id).single();
+                            if (me) {
+                                setParticipants(prev => [...prev, me]);
+                            }
+                        }
+                        const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+                        const { data: freshChat } = await SupabaseClient.getInstance().client
+                            .from('chat_messages')
+                            .select('id, content, sender_id, created_at, users(full_name)')
+                            .eq('event_id', id)
+                            .order('created_at', { ascending: false });
+                        if (freshChat) setMessages(freshChat);
+                    } else {
+                        showToast(res.message || "Could not join", "error");
                     }
+                } catch (e: any) {
+                    showToast(e.message || "Error joining", "error");
                 }
-                // Refetch chat history to be sure we are synced
-                const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
-                const { data: freshChat } = await SupabaseClient.getInstance().client
-                    .from('chat_messages')
-                    .select('id, content, sender_id, created_at, users(full_name)')
-                    .eq('event_id', id)
-                    .order('created_at', { ascending: false });
-                if (freshChat) setMessages(freshChat);
-            } else {
-                showToast(res.message || "Could not join", "error");
-            }
-        } catch (e: any) {
-            showToast(e.message || "Error joining", "error");
-        }
+            }}
+        ]);
     };
 
     const handleAddFriend = async (friendId: string) => {
         try {
-            const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
-            const { error: insertErr } = await SupabaseClient.getInstance().client.from('friendships').insert({
-                user_id: currentUserId,
-                friend_id: friendId
-            });
-            if (insertErr) throw insertErr;
+            const { NotificationService } = await import('../../src/infra/NotificationService');
+            const { FriendshipManager } = await import('../../src/core/identity/FriendshipManager');
+            const notifSvc = NotificationService.getInstance();
+            const friendshipManager = new FriendshipManager(notifSvc);
+            
+            await friendshipManager.sendRequest(currentUserId, friendId);
             showToast("Friend request sent!", "success");
         } catch (e: any) {
             showToast("Could not send request: " + e.message, "error");
@@ -176,11 +215,8 @@ export default function EventDetailScreen() {
 
     const sendMessage = async () => {
         if (!inputText.trim() || !currentUserId) return;
-
         const messageContent = inputText.trim();
-        setInputText(''); // Clear input
-
-        // Optimistic Update
+        setInputText('');
         const optimisticMsg = {
             id: 'temp-' + Date.now(),
             content: messageContent,
@@ -189,7 +225,6 @@ export default function EventDetailScreen() {
             users: { full_name: 'You' }
         };
         setMessages(prev => [optimisticMsg, ...prev]);
-
         try {
             const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
             const { error } = await SupabaseClient.getInstance().client
@@ -199,7 +234,6 @@ export default function EventDetailScreen() {
                     sender_id: currentUserId,
                     content: messageContent
                 });
-
             if (error) {
                 console.error("Failed to send message:", error);
                 showToast("Failed to send message", "error");
@@ -209,16 +243,42 @@ export default function EventDetailScreen() {
         }
     };
 
-    const handleEndEvent = () => {
-        setShowBadgePopup(true);
+    const handleEndEvent = async () => {
+        Alert.alert(
+            "End Event?",
+            "Are you sure you want to end this event? This will mark it as finished.",
+            [
+                { text: "Cancel", style: "cancel" },
+                { 
+                    text: "End Event", 
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            const { EventController } = await import('../../src/controllers/EventController');
+                            const { EventManager } = await import('../../src/core/event/EventManager');
+                            const evController = new EventController(EventManager.getInstance(), {} as any, {} as any);
+                            
+                            await evController.endEvent(id as string);
+                            showToast("Event finished! ✨", "success");
+                            router.replace('/(tabs)');
+                        } catch (e: any) {
+                            showToast("Failed to end event", "error");
+                        }
+                    } 
+                }
+            ]
+        );
     };
 
-    const awardBadge = (userId: string, badgeName: string) => {
-        showToast(`Awarded ${badgeName} badge! ✨`, 'success');
-        setShowBadgePopup(false);
-        setTimeout(() => {
-            router.replace('/(tabs)');
-        }, 1500);
+    const formatEventDate = (dateStr: string) => {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    };
+
+    const formatEventTime = (start: string, end: string) => {
+        const s = new Date(start);
+        const e = new Date(end);
+        return `${s.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} – ${e.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
     };
 
     const renderMessage = ({ item }: { item: any }) => {
@@ -232,123 +292,78 @@ export default function EventDetailScreen() {
         );
     };
 
-    return (
-        <SafeAreaView style={styles.safeArea}>
-            <Stack.Screen options={{ headerShown: false }} />
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+    const categoryColor = eventDetails ? getColorForTag(eventDetails.sub_category) : '#3B82F6';
 
-                {/* Header */}
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={28} color="#FFF" />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Event</Text>
-                    {isHost ? (
-                        <TouchableOpacity onPress={handleEndEvent} style={styles.endBtn}>
-                            <Text style={styles.endBtnText}>End</Text>
+    // If chat is open, show chat UI
+    if (showChat && hasJoined) {
+        return (
+            <SafeAreaView style={styles.safeArea}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+                    <View style={styles.header}>
+                        <TouchableOpacity onPress={() => setShowChat(false)} style={styles.backBtn}>
+                            <Ionicons name="arrow-back" size={28} color={theme.textPrimary} />
                         </TouchableOpacity>
-                    ) : (
-                        <View style={{ width: 60 }} />
-                    )}
-                </View>
-
-                {/* Top Section - Participants (Horizontal list or small view) */}
-                <View style={styles.participantsContainer}>
-                    <Text style={styles.sectionTitle}>Participants ({participants.length})</Text>
-                    <FlatList
-                        horizontal
-                        data={participants}
-                        keyExtractor={(p) => p.id}
-                        showsHorizontalScrollIndicator={false}
-                        renderItem={({ item }) => (
-                            <TouchableOpacity 
-                                style={styles.participantItem}
-                                onPress={() => {
-                                    setSelectedParticipant(item);
-                                    setShowParticipantModal(true);
-                                }}
-                            >
-                                <View style={styles.pAvatar}><Text style={styles.pAvatarText}>{item.full_name?.charAt(0) || 'U'}</Text></View>
-                                <Text style={styles.pName} numberOfLines={1}>{item.full_name?.split(' ')[0]}</Text>
-                                {item.id !== currentUserId && (
-                                    <TouchableOpacity style={styles.pAddBtn} onPress={() => handleAddFriend(item.id)}>
-                                        <Ionicons name="person-add" size={12} color="#FFF" />
-                                    </TouchableOpacity>
-                                )}
+                        <Text style={styles.headerTitle} numberOfLines={1}>{eventDetails?.title || 'Chat'}</Text>
+                        {isHost ? (
+                            <TouchableOpacity onPress={handleEndEvent} style={styles.endBtn}>
+                                <Text style={styles.endBtnText}>End</Text>
                             </TouchableOpacity>
+                        ) : (
+                            <View style={{ width: 60 }} />
                         )}
-                    />
-                </View>
+                    </View>
 
-                {/* Chat Area / Join CTA */}
-                {hasJoined ? (
-                    <>
-                        <View style={styles.chatContainer}>
-                            <FlatList
-                                inverted
-                                data={messages}
-                                keyExtractor={(item, index) => item.id || `msg-${index}`}
-                                renderItem={renderMessage}
-                                contentContainerStyle={{ paddingBottom: 20 }}
-                            />
-                        </View>
-                        <View style={styles.inputContainer}>
-                            <TextInput
-                                style={styles.input}
-                                value={inputText}
-                                onChangeText={setInputText}
-                                placeholder="Type a message..."
-                                placeholderTextColor="#7f8c8d"
-                            />
-                            <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-                                <Ionicons name="send" size={20} color="#FFF" />
-                            </TouchableOpacity>
-                        </View>
-                    </>
-                ) : (
-                    <View style={styles.joinCtaContainer}>
-                        <Ionicons name="people-circle" size={80} color="#3B82F6" style={{ marginBottom: 16 }} />
-                        <Text style={styles.joinTitle}>Join the Conversation</Text>
-                        <Text style={styles.joinSubtitle}>You need to join this event to see the chat and interact with other participants.</Text>
-                        <TouchableOpacity style={styles.mainJoinBtn} onPress={handleJoinEvent}>
-                            <Text style={styles.mainJoinBtnText}>Join Event</Text>
+                    {/* Participants */}
+                    <View style={styles.participantsContainer}>
+                        <Text style={styles.sectionLabel}>Participants ({participants.length})</Text>
+                        <FlatList
+                            horizontal
+                            data={participants}
+                            keyExtractor={(p) => p.id}
+                            showsHorizontalScrollIndicator={false}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={styles.participantItem}
+                                    onPress={() => {
+                                        setSelectedParticipant(item);
+                                        setShowParticipantModal(true);
+                                    }}
+                                >
+                                    <View style={styles.pAvatar}><Text style={styles.pAvatarText}>{item.full_name?.charAt(0) || 'U'}</Text></View>
+                                    <Text style={styles.pName} numberOfLines={1}>{item.full_name?.split(' ')[0]}</Text>
+                                    {item.id !== currentUserId && (
+                                        <TouchableOpacity style={styles.pAddBtn} onPress={() => handleAddFriend(item.id)}>
+                                            <Ionicons name="person-add" size={12} color="#FFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                        />
+                    </View>
+
+                    <View style={styles.chatContainer}>
+                        <FlatList
+                            inverted
+                            data={messages}
+                            keyExtractor={(item, index) => item.id || `msg-${index}`}
+                            renderItem={renderMessage}
+                            contentContainerStyle={{ paddingBottom: 20 }}
+                        />
+                    </View>
+                    <View style={styles.inputContainer}>
+                        <TextInput
+                            style={styles.input}
+                            value={inputText}
+                            onChangeText={setInputText}
+                            placeholder="Type a message..."
+                            placeholderTextColor="#7f8c8d"
+                        />
+                        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+                            <Ionicons name="send" size={20} color="#FFF" />
                         </TouchableOpacity>
                     </View>
-                )}
-
-                {/* Badge Economy Modal */}
-                <Modal visible={showBadgePopup} animationType="slide" transparent>
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            <Ionicons name="medal" size={64} color="#F59E0B" style={{ marginBottom: 16 }} />
-                            <Text style={styles.modalTitle}>Event Finished!</Text>
-                            <Text style={styles.modalText}>Award badges to participants to boost their trust score within your network.</Text>
-
-                            <Text style={styles.badgeTarget}>Participant: user-2</Text>
-
-                            <View style={styles.badgeGrid}>
-                                <TouchableOpacity style={styles.badgeBtn} onPress={() => awardBadge('user-2', 'Punctual')}>
-                                    <Text style={styles.emoji}>⏱️</Text>
-                                    <Text style={styles.badgeName}>Punctual</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity style={styles.badgeBtn} onPress={() => awardBadge('user-2', 'Fun')}>
-                                    <Text style={styles.emoji}>🎉</Text>
-                                    <Text style={styles.badgeName}>Fun</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity style={styles.badgeBtn} onPress={() => awardBadge('user-2', 'Helpful')}>
-                                    <Text style={styles.emoji}>🤝</Text>
-                                    <Text style={styles.badgeName}>Helpful</Text>
-                                </TouchableOpacity>
-                            </View>
-
-                            <TouchableOpacity style={styles.skipBtn} onPress={() => router.replace('/(tabs)')}>
-                                <Text style={styles.skipText}>Skip for now</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </Modal>
+                </KeyboardAvoidingView>
 
                 {/* Participant Profile Modal */}
                 <Modal visible={showParticipantModal} animationType="slide" transparent>
@@ -358,12 +373,11 @@ export default function EventDetailScreen() {
                                 <Text style={[styles.pAvatarText, { fontSize: 28 }]}>{selectedParticipant?.full_name?.charAt(0) || 'U'}</Text>
                             </View>
                             <Text style={styles.modalTitle}>{selectedParticipant?.full_name}</Text>
-                            
-                            <Text style={styles.sectionTitle}>Earned Badges</Text>
+                            <Text style={styles.sectionLabel}>Earned Badges</Text>
                             <ScrollView
-                              horizontal
-                              showsHorizontalScrollIndicator={false}
-                              contentContainerStyle={{ marginVertical: 12, paddingBottom: 16 }}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={{ marginVertical: 12, paddingBottom: 16 }}
                             >
                                 {selectedParticipant?.badges && selectedParticipant.badges.length > 0 ? (
                                     selectedParticipant.badges.map((b: string) => {
@@ -382,21 +396,216 @@ export default function EventDetailScreen() {
                                     <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 16 }}>No badges earned yet.</Text>
                                 )}
                             </ScrollView>
-
                             <TouchableOpacity style={styles.skipBtn} onPress={() => setShowParticipantModal(false)}>
                                 <Text style={styles.skipText}>Close</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
                 </Modal>
+            </SafeAreaView>
+        );
+    }
 
-            </KeyboardAvoidingView>
+    // Info Screen (default view)
+    return (
+        <SafeAreaView style={styles.safeArea}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            {/* Header */}
+            <View style={[styles.header, { borderBottomWidth: 1, borderBottomColor: theme.cardBorder }]}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+                    <Ionicons name="arrow-back" size={26} color={theme.textPrimary} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Event Details</Text>
+                {isHost ? (
+                    <TouchableOpacity onPress={handleEndEvent} style={styles.endBtn}>
+                        <Text style={styles.endBtnText}>End</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <View style={{ width: 60 }} />
+                )}
+            </View>
+
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
+                {/* Badge Awarding Modal removed for streamlined UX */}
+                {eventDetails && (
+                    <View style={styles.infoCard}>
+                        {/* Category Badge */}
+                        <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '20', borderColor: categoryColor + '40' }]}>
+                            <Text style={[styles.categoryText, { color: categoryColor }]}>{eventDetails.sub_category || 'Event'}</Text>
+                        </View>
+
+                        {/* Title */}
+                        <Text style={styles.eventTitle}>{eventDetails.title}</Text>
+
+                        {/* Organizer */}
+                        <View style={styles.organizerRow}>
+                            <View style={[styles.organizerAvatar, { backgroundColor: categoryColor }]}>
+                                <Text style={styles.organizerInitial}>{organizerName.charAt(0)}</Text>
+                            </View>
+                            <View>
+                                <Text style={styles.organizerName}>{organizerName}</Text>
+                                <Text style={styles.organizerLabel}>Organizer</Text>
+                            </View>
+                        </View>
+
+                        {/* Detail Rows */}
+                        <View style={styles.detailsSection}>
+                            <View style={styles.detailRow}>
+                                <View style={styles.detailIcon}>
+                                    <Ionicons name="calendar" size={18} color={categoryColor} />
+                                </View>
+                                <Text style={styles.detailText}>{formatEventDate(eventDetails.start_time)}</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                                <View style={styles.detailIcon}>
+                                    <Ionicons name="time" size={18} color={categoryColor} />
+                                </View>
+                                <Text style={styles.detailText}>{formatEventTime(eventDetails.start_time, eventDetails.end_time)}</Text>
+                            </View>
+                             <View style={styles.detailRow}>
+                                 <View style={styles.detailIcon}>
+                                     <Ionicons name="people" size={18} color={categoryColor} />
+                                 </View>
+                                 <Text style={styles.detailText}>{participants.length} {eventDetails.max_capacity > 0 ? `/ ${eventDetails.max_capacity}` : ''} participants</Text>
+                             </View>
+                            {eventDetails.is_private && (
+                                <View style={styles.detailRow}>
+                                    <View style={styles.detailIcon}>
+                                        <Ionicons name="lock-closed" size={18} color="#F59E0B" />
+                                    </View>
+                                    <Text style={[styles.detailText, { color: '#F59E0B' }]}>Private Event</Text>
+                                </View>
+                            )}
+                        </View>
+
+                        {/* Description */}
+                        {eventDetails.description ? (
+                            <View style={styles.descriptionBox}>
+                                <Text style={styles.descriptionTitle}>About</Text>
+                                <Text style={styles.descriptionText}>{eventDetails.description}</Text>
+                            </View>
+                        ) : null}
+                    </View>
+                )}
+
+                {/* Mini Map */}
+                {eventDetails?.location_lat && eventDetails?.location_lng && (
+                    <View style={styles.miniMapSection}>
+                        <Text style={styles.sectionLabelOutside}>Location</Text>
+                        <View style={styles.miniMapContainer}>
+                            <MapView
+                                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                                style={styles.miniMap}
+                                scrollEnabled={false}
+                                zoomEnabled={false}
+                                rotateEnabled={false}
+                                initialRegion={{
+                                    latitude: eventDetails.location_lat,
+                                    longitude: eventDetails.location_lng,
+                                    latitudeDelta: 0.01,
+                                    longitudeDelta: 0.01,
+                                }}
+                            >
+                                <Marker coordinate={{ latitude: eventDetails.location_lat, longitude: eventDetails.location_lng }}>
+                                    <View style={[styles.miniMapMarker, { backgroundColor: categoryColor }]}>
+                                        <Ionicons name="location" size={18} color="#FFF" />
+                                    </View>
+                                </Marker>
+                            </MapView>
+                        </View>
+                    </View>
+                )}
+
+                {/* Participants */}
+                <View style={styles.participantsSectionOutside}>
+                    <Text style={styles.sectionLabelOutside}>Participants ({participants.length})</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 4 }}>
+                        {participants.map(item => (
+                            <TouchableOpacity
+                                key={item.id}
+                                style={styles.participantItem}
+                                onPress={() => {
+                                    setSelectedParticipant(item);
+                                    setShowParticipantModal(true);
+                                }}
+                            >
+                                <View style={styles.pAvatar}><Text style={styles.pAvatarText}>{item.full_name?.charAt(0) || 'U'}</Text></View>
+                                <Text style={styles.pName} numberOfLines={1}>{item.full_name?.split(' ')[0]}</Text>
+                                {item.id !== currentUserId && (
+                                    <TouchableOpacity style={styles.pAddBtn} onPress={() => handleAddFriend(item.id)}>
+                                        <Ionicons name="person-add" size={12} color="#FFF" />
+                                    </TouchableOpacity>
+                                )}
+                            </TouchableOpacity>
+                        ))}
+                        {participants.length === 0 && (
+                            <Text style={{ color: '#94A3B8', fontSize: 14, padding: 16 }}>No one has joined yet. Be the first!</Text>
+                        )}
+                    </ScrollView>
+                </View>
+            </ScrollView>
+
+            {/* Bottom Action Bar */}
+            <View style={styles.bottomBar}>
+                {!hasJoined ? (
+                    <TouchableOpacity style={[styles.mainActionBtn, { backgroundColor: categoryColor }]} onPress={handleJoinEvent}>
+                        <Ionicons name="enter" size={22} color="#FFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.mainActionText}>Join Event</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity style={[styles.mainActionBtn, { backgroundColor: '#3B82F6' }]} onPress={() => setShowChat(true)}>
+                        <Ionicons name="chatbubbles" size={22} color="#FFF" style={{ marginRight: 8 }} />
+                        <Text style={styles.mainActionText}>Open Chat</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+
+            {/* Badge Economy Modal removed for simplified UX */}
+
+            {/* Participant Profile Modal */}
+            <Modal visible={showParticipantModal} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={[styles.pAvatar, { width: 64, height: 64, borderRadius: 32 }]}>
+                            <Text style={[styles.pAvatarText, { fontSize: 28 }]}>{selectedParticipant?.full_name?.charAt(0) || 'U'}</Text>
+                        </View>
+                        <Text style={styles.modalTitle}>{selectedParticipant?.full_name}</Text>
+                        <Text style={styles.sectionLabel}>Earned Badges</Text>
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={{ marginVertical: 12, paddingBottom: 16 }}
+                        >
+                            {selectedParticipant?.badges && selectedParticipant.badges.length > 0 ? (
+                                selectedParticipant.badges.map((b: string) => {
+                                    const cfg = BADGE_CONFIG[b];
+                                    if (!cfg) return null;
+                                    return (
+                                        <View key={b} style={styles.badgeSmall}>
+                                            <View style={{ backgroundColor: cfg.color + '20', padding: 12, borderRadius: 20, marginBottom: 6 }}>
+                                                <Ionicons name={cfg.icon as any} size={24} color={cfg.color} />
+                                            </View>
+                                            <Text style={{ color: '#E2E8F0', fontSize: 10, fontWeight: 'bold', textAlign: 'center' }}>{cfg.title}</Text>
+                                        </View>
+                                    );
+                                })
+                            ) : (
+                                <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 16 }}>No badges earned yet.</Text>
+                            )}
+                        </ScrollView>
+                        <TouchableOpacity style={styles.skipBtn} onPress={() => setShowParticipantModal(false)}>
+                            <Text style={styles.skipText}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: '#15202B' },
+const createStyles = (theme: ThemeColors) => StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: theme.background },
     container: { flex: 1 },
 
     header: {
@@ -407,57 +616,179 @@ const styles = StyleSheet.create({
         paddingBottom: 16,
         paddingTop: Platform.OS === 'android' ? 40 : 10,
         borderBottomWidth: 1,
-        borderBottomColor: '#1C2733',
+        borderBottomColor: theme.cardBorder,
     },
     backBtn: { minHeight: 44, justifyContent: 'center' },
-    headerTitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
-    endBtn: { backgroundColor: '#EF4444', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+    headerTitle: { color: theme.textPrimary, fontSize: 20, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+    endBtn: { backgroundColor: theme.danger, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
     endBtnText: { color: '#FFF', fontWeight: 'bold' },
 
+    // Info Card
+    infoCard: {
+        margin: 16,
+        backgroundColor: theme.card,
+        borderRadius: 24,
+        padding: 24,
+        borderWidth: 1,
+        borderColor: theme.cardBorder,
+    },
+    categoryBadge: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 16,
+    },
+    categoryText: {
+        fontSize: 13,
+        fontWeight: '800',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    eventTitle: {
+        color: theme.textPrimary,
+        fontSize: 26,
+        fontWeight: '900',
+        marginBottom: 20,
+        lineHeight: 32,
+    },
+    organizerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 24,
+        paddingBottom: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.cardBorder,
+    },
+    organizerAvatar: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    organizerInitial: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+    organizerName: { color: theme.textPrimary, fontSize: 16, fontWeight: '700' },
+    organizerLabel: { color: theme.textSecondary, fontSize: 13, marginTop: 2 },
+    detailsSection: { gap: 14 },
+    detailRow: { flexDirection: 'row', alignItems: 'center' },
+    detailIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        backgroundColor: theme.primaryLight,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    detailText: { color: theme.textPrimary, fontSize: 15, fontWeight: '600' },
+    descriptionBox: {
+        marginTop: 20,
+        paddingTop: 20,
+        borderTopWidth: 1,
+        borderTopColor: theme.cardBorder,
+    },
+    descriptionTitle: { color: theme.textSecondary, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 },
+    descriptionText: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
+
+    // Mini Map
+    miniMapSection: { marginHorizontal: 16, marginBottom: 16 },
+    sectionLabelOutside: { color: theme.textSecondary, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, paddingHorizontal: 4 },
+    miniMapContainer: {
+        height: 180,
+        borderRadius: 20,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: theme.cardBorder,
+    },
+    miniMap: { width: '100%', height: '100%' },
+    miniMapMarker: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#FFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.5,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+
+    // Participants section (outside card)
+    participantsSectionOutside: {
+        marginHorizontal: 16,
+        marginBottom: 16,
+    },
+
+    // Bottom Action Bar
+    bottomBar: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: theme.background,
+        padding: 16,
+        paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+        borderTopWidth: 1,
+        borderTopColor: theme.cardBorder,
+    },
+    mainActionBtn: {
+        flexDirection: 'row',
+        height: 56,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: theme.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 10,
+        elevation: 8,
+    },
+    mainActionText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
+
+    // Chat
     chatContainer: { flex: 1, padding: 16 },
     messageBubble: { maxWidth: '80%', padding: 12, borderRadius: 16, marginBottom: 12 },
-    messageSent: { alignSelf: 'flex-end', backgroundColor: '#3B82F6', borderBottomRightRadius: 4 },
-    messageRecv: { alignSelf: 'flex-start', backgroundColor: '#1C2733', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: '#334155' },
-    senderId: { color: '#94A3B8', fontSize: 10, marginBottom: 4, fontWeight: 'bold' },
-    messageText: { color: '#E2E8F0', fontSize: 16 },
+    messageSent: { alignSelf: 'flex-end', backgroundColor: theme.primary, borderBottomRightRadius: 4 },
+    messageRecv: { alignSelf: 'flex-start', backgroundColor: theme.card, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: theme.cardBorder },
+    senderId: { color: theme.textSecondary, fontSize: 10, marginBottom: 4, fontWeight: 'bold' },
+    messageText: { color: theme.textPrimary, fontSize: 16 },
 
-    inputContainer: { flexDirection: 'row', padding: 16, backgroundColor: '#15202B', borderTopWidth: 1, borderTopColor: '#1C2733' },
-    input: { flex: 1, backgroundColor: '#1C2733', color: '#FFF', height: 44, borderRadius: 22, paddingHorizontal: 16, marginRight: 12, borderWidth: 1, borderColor: '#334155' },
-    sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#3B82F6', justifyContent: 'center', alignItems: 'center' },
-
-    // Join CTA Area
-    joinCtaContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
-    joinTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 12, textAlign: 'center' },
-    joinSubtitle: { fontSize: 16, color: '#94A3B8', textAlign: 'center', marginBottom: 32, lineHeight: 24 },
-    mainJoinBtn: { backgroundColor: '#3B82F6', paddingHorizontal: 40, paddingVertical: 16, borderRadius: 24, shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8 },
-    mainJoinBtnText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
+    inputContainer: { flexDirection: 'row', padding: 16, backgroundColor: theme.background, borderTopWidth: 1, borderTopColor: theme.cardBorder },
+    input: { flex: 1, backgroundColor: theme.card, color: theme.textPrimary, height: 44, borderRadius: 22, paddingHorizontal: 16, marginRight: 12, borderWidth: 1, borderColor: theme.cardBorder },
+    sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center' },
 
     // Modal
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    modalContent: { width: '100%', backgroundColor: '#1C2733', borderRadius: 24, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
-    modalTitle: { color: '#FFF', fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
-    modalText: { color: '#94A3B8', textAlign: 'center', marginBottom: 24 },
-    badgeTarget: { color: '#3B82F6', fontWeight: 'bold', marginBottom: 16 },
+    modalContent: { width: '100%', backgroundColor: theme.card, borderRadius: 24, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: theme.cardBorder },
+    modalTitle: { color: theme.textPrimary, fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
+    modalText: { color: theme.textSecondary, textAlign: 'center', marginBottom: 24 },
+    badgeTarget: { color: theme.primary, fontWeight: 'bold', marginBottom: 16 },
 
     badgeGrid: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 32 },
-    badgeBtn: { flex: 1, alignItems: 'center', backgroundColor: '#15202B', marginHorizontal: 4, paddingVertical: 16, borderRadius: 16, borderWidth: 1, borderColor: '#334155' },
+    badgeBtn: { flex: 1, alignItems: 'center', backgroundColor: theme.background, marginHorizontal: 4, paddingVertical: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.cardBorder },
     emoji: { fontSize: 32, marginBottom: 8 },
-    badgeName: { color: '#E2E8F0', fontWeight: 'bold' },
+    badgeName: { color: theme.textPrimary, fontWeight: 'bold' },
     badgeSmall: { alignItems: 'center', marginHorizontal: 8, width: 70 },
 
     skipBtn: { paddingVertical: 12 },
-    skipText: { color: '#94A3B8', fontSize: 16, fontWeight: 'bold' },
+    skipText: { color: theme.textSecondary, fontSize: 16, fontWeight: 'bold' },
 
     // Participants
     participantsContainer: {
         paddingVertical: 12,
         paddingHorizontal: 16,
-        backgroundColor: '#15202B',
+        backgroundColor: theme.background,
         borderBottomWidth: 1,
-        borderBottomColor: '#1C2733'
+        borderBottomColor: theme.cardBorder
     },
-    sectionTitle: {
-        color: '#94A3B8',
+    sectionLabel: {
+        color: theme.textSecondary,
         fontSize: 12,
         fontWeight: 'bold',
         textTransform: 'uppercase',
@@ -472,24 +803,25 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: '#3B82F6',
+        backgroundColor: theme.primary,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 8
     },
     pAvatarText: { color: '#FFF', fontWeight: 'bold', fontSize: 20 },
-    pName: { color: '#E2E8F0', fontSize: 12, textAlign: 'center' },
+    pName: { color: theme.textPrimary, fontSize: 12, textAlign: 'center' },
     pAddBtn: {
         position: 'absolute',
         top: 0,
         right: 0,
-        backgroundColor: '#10B981',
+        backgroundColor: theme.success,
         width: 20,
         height: 20,
         borderRadius: 10,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#15202B'
+        borderColor: theme.background
     }
 });
+

@@ -14,402 +14,14 @@ import {
 import { useUIStore } from "../../src/store/uiStore";
 import { ThemeColors } from "../../src/theme/colors";
 import { useTheme } from "../../src/theme/useTheme";
+import { INTEREST_TAGS } from "../../src/data/interestTags";
 
 const { width, height } = Dimensions.get("window");
 
-// DİKKAT: 54 MADDELİK TAM LİSTE (İNGİLİZCE)
-const CARDS = [
-  // SPORTS
-  {
-    id: "1",
-    title: "Volleyball",
-    category: "Sports",
-    icon: "fitness",
-    color: "#3B82F6",
-  },
-  {
-    id: "2",
-    title: "Basketball",
-    category: "Sports",
-    icon: "basketball",
-    color: "#3B82F6",
-  },
-  {
-    id: "3",
-    title: "Football",
-    category: "Sports",
-    icon: "football",
-    color: "#3B82F6",
-  },
-  {
-    id: "4",
-    title: "Tennis",
-    category: "Sports",
-    icon: "tennisball",
-    color: "#3B82F6",
-  },
-  {
-    id: "5",
-    title: "Swimming",
-    category: "Sports",
-    icon: "water",
-    color: "#3B82F6",
-  },
-  {
-    id: "6",
-    title: "Running",
-    category: "Sports",
-    icon: "walk",
-    color: "#3B82F6",
-  },
-  {
-    id: "7",
-    title: "Yoga",
-    category: "Sports",
-    icon: "body",
-    color: "#3B82F6",
-  },
-  {
-    id: "8",
-    title: "Pilates",
-    category: "Sports",
-    icon: "body-outline",
-    color: "#3B82F6",
-  },
-  {
-    id: "9",
-    title: "Fitness",
-    category: "Sports",
-    icon: "barbell",
-    color: "#3B82F6",
-  },
-  {
-    id: "10",
-    title: "Skateboarding",
-    category: "Sports",
-    icon: "bicycle",
-    color: "#3B82F6",
-  },
-  {
-    id: "11",
-    title: "Cycling",
-    category: "Sports",
-    icon: "bicycle",
-    color: "#3B82F6",
-  },
-  {
-    id: "12",
-    title: "Archery",
-    category: "Sports",
-    icon: "navigate",
-    color: "#3B82F6",
-  },
-  {
-    id: "13",
-    title: "Mountaineering",
-    category: "Sports",
-    icon: "image",
-    color: "#3B82F6",
-  },
-  {
-    id: "14",
-    title: "Boxing",
-    category: "Sports",
-    icon: "hand-left",
-    color: "#3B82F6",
-  },
-  {
-    id: "15",
-    title: "Table Tennis",
-    category: "Sports",
-    icon: "tennisball-outline",
-    color: "#3B82F6",
-  },
+const CARDS = INTEREST_TAGS;
 
-  // TECH & SCIENCE
-  {
-    id: "16",
-    title: "Software",
-    category: "Tech & Science",
-    icon: "code-slash",
-    color: "#8B5CF6",
-  },
-  {
-    id: "17",
-    title: "AI",
-    category: "Tech & Science",
-    icon: "hardware-chip",
-    color: "#8B5CF6",
-  },
-  {
-    id: "18",
-    title: "Data Science",
-    category: "Tech & Science",
-    icon: "bar-chart",
-    color: "#8B5CF6",
-  },
-  {
-    id: "19",
-    title: "Cyber Security",
-    category: "Tech & Science",
-    icon: "shield-checkmark",
-    color: "#8B5CF6",
-  },
-  {
-    id: "20",
-    title: "Robotics",
-    category: "Tech & Science",
-    icon: "cog",
-    color: "#8B5CF6",
-  },
-  {
-    id: "21",
-    title: "Game Dev",
-    category: "Tech & Science",
-    icon: "game-controller",
-    color: "#8B5CF6",
-  },
-  {
-    id: "22",
-    title: "Blockchain",
-    category: "Tech & Science",
-    icon: "link",
-    color: "#8B5CF6",
-  },
-  {
-    id: "23",
-    title: "Astronomy",
-    category: "Tech & Science",
-    icon: "planet",
-    color: "#8B5CF6",
-  },
-  {
-    id: "24",
-    title: "Electronics",
-    category: "Tech & Science",
-    icon: "bulb",
-    color: "#8B5CF6",
-  },
-
-  // ARTS & CULTURE
-  {
-    id: "25",
-    title: "Theater",
-    category: "Arts & Culture",
-    icon: "color-palette",
-    color: "#EC4899",
-  },
-  {
-    id: "26",
-    title: "Cinema",
-    category: "Arts & Culture",
-    icon: "film",
-    color: "#EC4899",
-  },
-  {
-    id: "27",
-    title: "Concerts",
-    category: "Arts & Culture",
-    icon: "musical-notes",
-    color: "#EC4899",
-  },
-  {
-    id: "28",
-    title: "Dance",
-    category: "Arts & Culture",
-    icon: "body",
-    color: "#EC4899",
-  },
-  {
-    id: "29",
-    title: "Painting",
-    category: "Arts & Culture",
-    icon: "brush",
-    color: "#EC4899",
-  },
-  {
-    id: "30",
-    title: "Sculpture",
-    category: "Arts & Culture",
-    icon: "hammer",
-    color: "#EC4899",
-  },
-  {
-    id: "31",
-    title: "Literature",
-    category: "Arts & Culture",
-    icon: "book",
-    color: "#EC4899",
-  },
-  {
-    id: "32",
-    title: "Photography",
-    category: "Arts & Culture",
-    icon: "camera",
-    color: "#EC4899",
-  },
-  {
-    id: "33",
-    title: "Exhibitions",
-    category: "Arts & Culture",
-    icon: "images",
-    color: "#EC4899",
-  },
-  {
-    id: "34",
-    title: "Stand-up",
-    category: "Arts & Culture",
-    icon: "mic",
-    color: "#EC4899",
-  },
-  {
-    id: "35",
-    title: "Museums",
-    category: "Arts & Culture",
-    icon: "business",
-    color: "#EC4899",
-  },
-  {
-    id: "36",
-    title: "Opera",
-    category: "Arts & Culture",
-    icon: "musical-notes-outline",
-    color: "#EC4899",
-  },
-
-  // HOBBIES & LIFESTYLE (Mor Renk)
-  {
-    id: "37",
-    title: "Camping",
-    category: "Hobbies",
-    icon: "leaf",
-    color: "#8910b9",
-  },
-  {
-    id: "38",
-    title: "Chess",
-    category: "Hobbies",
-    icon: "extension-puzzle",
-    color: "#8910b9",
-  },
-  {
-    id: "39",
-    title: "Reading",
-    category: "Hobbies",
-    icon: "book-outline",
-    color: "#8910b9",
-  },
-  {
-    id: "40",
-    title: "Cooking",
-    category: "Hobbies",
-    icon: "restaurant",
-    color: "#8910b9",
-  },
-  {
-    id: "41",
-    title: "Gastronomy",
-    category: "Hobbies",
-    icon: "fast-food",
-    color: "#8910b9",
-  },
-  {
-    id: "42",
-    title: "E-sports",
-    category: "Hobbies",
-    icon: "headset",
-    color: "#8910b9",
-  },
-  {
-    id: "43",
-    title: "Gardening",
-    category: "Hobbies",
-    icon: "flower",
-    color: "#8910b9",
-  },
-  {
-    id: "44",
-    title: "Traveling",
-    category: "Hobbies",
-    icon: "airplane",
-    color: "#8910b9",
-  },
-  {
-    id: "45",
-    title: "Languages",
-    category: "Hobbies",
-    icon: "language",
-    color: "#8910b9",
-  },
-  {
-    id: "46",
-    title: "Collecting",
-    category: "Hobbies",
-    icon: "albums",
-    color: "#8910b9",
-  },
-  {
-    id: "47",
-    title: "Guitar",
-    category: "Hobbies",
-    icon: "musical-note",
-    color: "#8910b9",
-  },
-  {
-    id: "48",
-    title: "Piano",
-    category: "Hobbies",
-    icon: "musical-note",
-    color: "#8910b9",
-  },
-  {
-    id: "49",
-    title: "Violin",
-    category: "Hobbies",
-    icon: "musical-note",
-    color: "#8910b9",
-  },
-
-  // SOCIAL
-  {
-    id: "50",
-    title: "Volunteering",
-    category: "Social",
-    icon: "heart-half",
-    color: "#10B981",
-  },
-  {
-    id: "51",
-    title: "Networking",
-    category: "Social",
-    icon: "chatbubbles",
-    color: "#10B981",
-  },
-  {
-    id: "52",
-    title: "Career Fairs",
-    category: "Social",
-    icon: "briefcase",
-    color: "#10B981",
-  },
-  {
-    id: "53",
-    title: "Workshops",
-    category: "Social",
-    icon: "construct",
-    color: "#10B981",
-  },
-  {
-    id: "54",
-    title: "Board Games",
-    category: "Social",
-    icon: "dice",
-    color: "#10B981",
-  },
-];
-
-// Kartları rastgele karıştırmak istersen (isteğe bağlı)
-const SHUFFLED_CARDS = CARDS.sort(() => Math.random() - 0.5);
+// Shuffle cards
+const SHUFFLED_CARDS = [...CARDS].sort(() => Math.random() - 0.5);
 
 const PROGRESS_COLORS = ["#E11D48", "#F59E0B", "#10B981", "#3B82F6", "#8B5CF6"];
 
@@ -494,8 +106,7 @@ export default function InterestsScreen() {
         await import("../../src/core/identity/UserManager");
       const controller = new UserController(
         UserManager.getInstance(),
-        {} as any,
-        {} as any,
+        {} as any
       );
 
       await controller.updateProfile(undefined, {
@@ -788,20 +399,20 @@ const createStyles = (theme: ThemeColors) =>
       transform: [{ rotate: "-20deg" }],
       zIndex: 10,
     },
-    likeStamp: { left: 40, borderColor: "#10B981" },
+    likeStamp: { left: 40, borderColor: theme.success },
     nopeStamp: {
       right: 40,
-      borderColor: "#EF4444",
+      borderColor: theme.danger,
       transform: [{ rotate: "20deg" }],
     },
     likeText: {
-      color: "#10B981",
+      color: theme.success,
       fontSize: 32,
       fontWeight: "900",
       letterSpacing: 2,
     },
     nopeText: {
-      color: "#EF4444",
+      color: theme.danger,
       fontSize: 32,
       fontWeight: "900",
       letterSpacing: 2,
@@ -829,13 +440,13 @@ const createStyles = (theme: ThemeColors) =>
       backgroundColor: theme.card,
       justifyContent: "center",
       alignItems: "center",
-      shadowColor: "#EF4444",
+      shadowColor: theme.danger,
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3,
       shadowRadius: 8,
       elevation: 5,
       borderWidth: 1,
-      borderColor: "rgba(239, 68, 68, 0.3)",
+      borderColor: theme.danger + "4D", // 30% alpha
     },
     likeBtn: {
       width: 64,
@@ -844,13 +455,13 @@ const createStyles = (theme: ThemeColors) =>
       backgroundColor: theme.card,
       justifyContent: "center",
       alignItems: "center",
-      shadowColor: "#10B981",
+      shadowColor: theme.success,
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3,
       shadowRadius: 8,
       elevation: 5,
       borderWidth: 1,
-      borderColor: "rgba(16, 185, 129, 0.3)",
+      borderColor: theme.success + "4D", // 30% alpha
     },
     footer: {
       position: "absolute",

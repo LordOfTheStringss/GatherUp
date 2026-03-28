@@ -82,6 +82,26 @@ export class NotificationService {
         );
     }
 
+    public async sendEventInvite(targetUserId: string, eventTitle: string, eventId: string, senderName: string, senderId: string): Promise<void> {
+        await this.sendPush(
+            targetUserId,
+            "Event Invitation",
+            `${senderName} invited you to an event: ${eventTitle}`,
+            { eventId, senderId, action: 'event_invite' },
+            'event_invite'
+        );
+    }
+
+    public async sendInviteRejection(targetUserId: string, friendName: string, eventTitle: string): Promise<void> {
+        await this.sendPush(
+            targetUserId,
+            "Invitation Declined",
+            `${friendName} declined your invitation to: ${eventTitle}`,
+            { action: 'invite_rejected' },
+            'general'
+        );
+    }
+
     public async sendFriendEventNotification(targetUserId: string, eventTitle: string, friendName: string): Promise<void> {
         await this.sendPush(
             targetUserId,

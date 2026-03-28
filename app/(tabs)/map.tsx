@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Dimensions, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import React, { useEffect, useRef, useState } from 'react';
+import { Dimensions, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthManager } from '../../src/core/identity/AuthManager';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
@@ -10,12 +10,15 @@ import { useFocusEffect } from 'expo-router';
 import { EventController } from '../../src/controllers/EventController';
 import { EventManager } from '../../src/core/event/EventManager';
 import { useUIStore } from '../../src/store/uiStore';
+import { SupabaseClient } from '../../src/infra/SupabaseClient';
+import { getColorForTag, getCategoryForTag, CATEGORY_COLORS } from '../../src/data/interestTags';
+import { useTheme } from '../../src/theme/useTheme';
+import { ThemeColors } from '../../src/theme/colors';
 
 const eventController = new EventController(EventManager.getInstance(), {} as any, {} as any);
 
 const { width, height } = Dimensions.get('window');
 
-// Custom dark map style
 const mapStyle = [
     { "elementType": "geometry", "stylers": [{ "color": "#1d2c4d" }] },
     { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
@@ -46,9 +49,18 @@ const mapStyle = [
 ];
 
 export default function MapScreen() {
+    const theme = useTheme();
+    const styles = createStyles(theme);
     const { showToast, setGlobalLoading, mapTooltipVisible, setMapTooltipVisible, handleDismissMapTooltip } = useUIStore();
     const [selectedCoord, setSelectedCoord] = useState<{ latitude: number, longitude: number } | null>(null);
     const [trendingEvents, setTrendingEvents] = useState<any[]>([]);
+    const mapRef = useRef<MapView>(null);
+    const [currentRegion, setCurrentRegion] = useState<Region>({
+        latitude: 39.92077,
+        longitude: 32.85411,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+    });
 
     useFocusEffect(
         React.useCallback(() => {
@@ -69,23 +81,50 @@ export default function MapScreen() {
     );
 
     const [allEvents, setAllEvents] = useState<any[]>([]);
+    const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
 
-    useEffect(() => {
-        const fetchEvents = async () => {
-            setGlobalLoading(true);
-            try {
-                const res = await eventController.getEvents({ category: 'All' });
-                if (res.data) {
-                    setAllEvents(res.data.filter((e: any) => e.location_lat && e.location_lng));
+    useFocusEffect(
+        React.useCallback(() => {
+            const fetchEvents = async () => {
+                setGlobalLoading(true);
+                try {
+                    const user = await AuthManager.getInstance().getCurrentUser();
+                    const userId = user?.id;
+
+                    const res = await eventController.getEvents(
+                        userId
+                            ? { category: 'All', userId }
+                            : { category: 'All' }
+                    );
+                    if (res.data) {
+                        const withLocation = res.data.filter((e: any) => e.location_lat && e.location_lng);
+                        setAllEvents(withLocation);
+
+                        const eventIds = withLocation.map((e: any) => e.id);
+                        if (eventIds.length > 0) {
+                            const { data: counts } = await SupabaseClient.getInstance().client
+                                .from('event_participants')
+                                .select('event_id')
+                                .in('event_id', eventIds);
+
+                            if (counts) {
+                                const countMap: Record<string, number> = {};
+                                counts.forEach((row: any) => {
+                                    countMap[row.event_id] = (countMap[row.event_id] || 0) + 1;
+                                });
+                                setParticipantCounts(countMap);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Map fetch error:", e);
+                } finally {
+                    setGlobalLoading(false);
                 }
-            } catch (e) {
-                console.error("Map fetch error:", e);
-            } finally {
-                setGlobalLoading(false);
-            }
-        };
-        fetchEvents();
-    }, []);
+            };
+            fetchEvents();
+        }, [])
+    );
 
     const handleMapPress = (coord: { latitude: number, longitude: number }) => {
         setSelectedCoord(coord);
@@ -98,7 +137,8 @@ export default function MapScreen() {
         const mappedTrending = nearby.map(e => ({
             id: e.id,
             title: e.title,
-            participants: e.max_capacity || Math.floor(Math.random() * 50) + 5,
+            // Real participant count: participants + organizer (1)
+            participants: (participantCounts[e.id] || 0) + 1,
             category: e.sub_category
         }));
 
@@ -106,16 +146,20 @@ export default function MapScreen() {
     };
 
     const [showHeatmap, setShowHeatmap] = useState(false);
+    const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
 
-    // Group events by rough location for heatmap
     const getHeatmapData = () => {
         const heatmap: any[] = [];
-        // A very basic heatmap clustering simulation by category
         allEvents.forEach(evt => {
+            const parentCat = getCategoryForTag(evt.sub_category);
+
+            // If a category filter is active, skip events not matching
+            if (activeCategoryFilter && parentCat !== activeCategoryFilter) return;
+
             const existingNode = heatmap.find(h =>
                 Math.abs(h.latitude - evt.location_lat) < 0.02 &&
                 Math.abs(h.longitude - evt.location_lng) < 0.02 &&
-                h.category === evt.sub_category
+                h.category === parentCat
             );
 
             if (existingNode) {
@@ -125,7 +169,8 @@ export default function MapScreen() {
                     id: `heat_${evt.id}`,
                     latitude: evt.location_lat,
                     longitude: evt.location_lng,
-                    category: evt.sub_category,
+                    category: parentCat,
+                    color: getColorForTag(evt.sub_category),
                     weight: 1
                 });
             }
@@ -134,6 +179,29 @@ export default function MapScreen() {
     };
 
     const heatmapData = getHeatmapData();
+
+    const getMarkerColor = (subCategory: string): string => {
+        return getColorForTag(subCategory) || '#3B82F6';
+    };
+
+    const handleZoom = (zoomIn: boolean) => {
+        const factor = zoomIn ? 0.5 : 2;
+        const newRegion = {
+            ...currentRegion,
+            latitudeDelta: currentRegion.latitudeDelta * factor,
+            longitudeDelta: currentRegion.longitudeDelta * factor,
+        };
+        setCurrentRegion(newRegion);
+        mapRef.current?.animateToRegion(newRegion, 300);
+    };
+
+    const handleLegendTap = (category: string) => {
+        if (activeCategoryFilter === category) {
+            setActiveCategoryFilter(null);
+        } else {
+            setActiveCategoryFilter(category);
+        }
+    };
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -152,7 +220,7 @@ export default function MapScreen() {
                 <View style={styles.headerControls}>
                     <TouchableOpacity
                         style={[styles.heatmapToggle, showHeatmap && styles.heatmapToggleActive]}
-                        onPress={() => setShowHeatmap(!showHeatmap)}
+                        onPress={() => { setShowHeatmap(!showHeatmap); setActiveCategoryFilter(null); }}
                         activeOpacity={0.8}
                     >
                         <Ionicons name="flame" size={20} color={showHeatmap ? "#FFF" : "#F59E0B"} />
@@ -162,133 +230,156 @@ export default function MapScreen() {
                     </TouchableOpacity>
                 </View>
 
+                {/* Zoom Controls */}
+                <View style={styles.zoomControls}>
+                    <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom(true)} activeOpacity={0.7}>
+                        <Ionicons name="add" size={24} color={theme.textPrimary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom(false)} activeOpacity={0.7}>
+                        <Ionicons name="remove" size={24} color={theme.textPrimary} />
+                    </TouchableOpacity>
+                </View>
+
                 <View style={styles.mapContainer}>
                     <MapView
+                        ref={mapRef}
                         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                         style={styles.map}
                         customMapStyle={mapStyle}
-                        initialRegion={{
-                            latitude: 39.92077,
-                            longitude: 32.85411,
-                            latitudeDelta: 0.0922,
-                            longitudeDelta: 0.0421,
-                        }}
+                        initialRegion={currentRegion}
+                        onRegionChangeComplete={(region) => setCurrentRegion(region)}
                         showsUserLocation={true}
                         showsMyLocationButton={false}
                         onPress={(e) => handleMapPress(e.nativeEvent.coordinate)}
                     >
-                        {/* Event Markers */}
-                        {
-                            selectedCoord && !showHeatmap && (
-                                <Marker coordinate={selectedCoord}>
-                                    <View style={[styles.markerBadge, { backgroundColor: '#F59E0B', width: 40, height: 40, borderRadius: 20 }]}>
-                                        <Ionicons name="location" size={20} color="#FFF" />
-                                    </View>
-                                </Marker>
-                            )
-                        }
-                        {/* Live Markers from DB */}
-                        {
-                            !selectedCoord && !showHeatmap && allEvents.map((evt: any) => (
-                                <Marker
-                                    key={evt.id}
-                                    coordinate={{ latitude: evt.location_lat, longitude: evt.location_lng }}
-                                    title={evt.title}
-                                    description={evt.sub_category}
-                                >
-                                    <View style={[styles.markerBadge, { backgroundColor: '#3B82F6' }]}>
-                                        <Ionicons name="location" size={16} color="#FFF" />
-                                    </View>
-                                </Marker>
-                            ))
-                        }
+                        {/* Selected coordinate marker */}
+                        {selectedCoord && !showHeatmap && (
+                            <Marker coordinate={selectedCoord}>
+                                <View style={[styles.markerBadge, { backgroundColor: '#F59E0B', width: 40, height: 40, borderRadius: 20 }]}>
+                                    <Ionicons name="location" size={20} color="#FFF" />
+                                </View>
+                            </Marker>
+                        )}
 
-                        {/* Heatmap Nodes */}
-                        {
-                            showHeatmap && heatmapData.map((node: any) => (
-                                <Marker
-                                    key={node.id}
-                                    coordinate={{ latitude: node.latitude, longitude: node.longitude }}
-                                    title={`${node.category} Hotspot`}
-                                    description={`${node.weight} events in this area`}
-                                >
-                                    <View style={[
-                                        styles.heatmapNode,
-                                        {
-                                            width: Math.min(100, 30 + (node.weight * 15)),
-                                            height: Math.min(100, 30 + (node.weight * 15)),
-                                            borderRadius: Math.min(100, 30 + (node.weight * 15)) / 2,
-                                            backgroundColor: `rgba(239, 68, 68, ${Math.min(0.8, 0.3 + (node.weight * 0.1))})`
-                                        }
-                                    ]}>
-                                        <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>{node.category}</Text>
-                                    </View>
-                                </Marker>
-                            ))
-                        }
-                    </MapView >
-                </View >
+                        {/* DB Event Markers — always visible */}
+                        {!showHeatmap && allEvents.map((evt: any) => (
+                            <Marker
+                                key={evt.id}
+                                coordinate={{ latitude: evt.location_lat, longitude: evt.location_lng }}
+                                onPress={() => router.push(`/event/${evt.id}`)}
+                            >
+                                <View style={[styles.markerBadge, { backgroundColor: getMarkerColor(evt.sub_category) }]}>
+                                    <Ionicons name="location" size={16} color="#FFF" />
+                                </View>
+                            </Marker>
+                        ))}
+
+                        {/* Heatmap Nodes — Category Colored */}
+                        {showHeatmap && heatmapData.map((node: any) => (
+                            <Marker
+                                key={node.id}
+                                coordinate={{ latitude: node.latitude, longitude: node.longitude }}
+                                title={`${node.category} Hotspot`}
+                                description={`${node.weight} events in this area`}
+                            >
+                                <View style={[
+                                    styles.heatmapNode,
+                                    {
+                                        width: Math.min(100, 30 + (node.weight * 15)),
+                                        height: Math.min(100, 30 + (node.weight * 15)),
+                                        borderRadius: Math.min(100, 30 + (node.weight * 15)) / 2,
+                                        backgroundColor: `${node.color}${Math.min(0.8, 0.3 + (node.weight * 0.1)) < 0.5 ? '60' : 'CC'}`
+                                    }
+                                ]}>
+                                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>{node.category}</Text>
+                                    <Text style={{ color: '#FFF', fontSize: 8, opacity: 0.8 }}>{node.weight}</Text>
+                                </View>
+                            </Marker>
+                        ))}
+                    </MapView>
+                </View>
+
+                {/* Heatmap Legend — tappable for filtering */}
+                {showHeatmap && (
+                    <View style={styles.legendContainer}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
+                            {Object.entries(CATEGORY_COLORS).map(([cat, color]) => {
+                                const isActive = activeCategoryFilter === cat;
+                                return (
+                                    <TouchableOpacity
+                                        key={cat}
+                                        style={[
+                                            styles.legendItem,
+                                            isActive && { backgroundColor: color, borderColor: color }
+                                        ]}
+                                        onPress={() => handleLegendTap(cat)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={[styles.legendDot, { backgroundColor: isActive ? '#FFF' : color }]} />
+                                        <Text style={[styles.legendText, isActive && { color: '#FFF', fontWeight: '800' }]}>{cat}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </View>
+                )}
 
                 {/* Trending Events Bottom Panel */}
-                {
-                    selectedCoord && trendingEvents.length > 0 && (
-                        <View style={styles.trendingPanel}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                <Text style={styles.trendingPanelTitle}>Trending Nearby</Text>
-                                <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
-                            </View>
-                            {trendingEvents.map(event => (
-                                <View key={event.id} style={styles.trendingEventRow}>
-                                    <View style={styles.trendingEventIcon}>
-                                        <Ionicons name="flash" size={16} color="#F59E0B" />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.trendingEventTitle}>{event.title}</Text>
-                                        <Text style={styles.trendingEventCategory}>{event.category}</Text>
-                                    </View>
-                                    <View style={{ alignItems: 'flex-end' }}>
-                                        <Text style={styles.trendingEventStats}>{event.participants} going</Text>
-                                    </View>
-                                </View>
-                            ))}
+                {selectedCoord && trendingEvents.length > 0 && (
+                    <View style={styles.trendingPanel}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <Text style={styles.trendingPanelTitle}>Trending Nearby</Text>
+                            <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
                         </View>
-                    )
-                }
+                        {trendingEvents.map(event => (
+                            <TouchableOpacity key={event.id} style={styles.trendingEventRow} onPress={() => router.push(`/event/${event.id}`)}>
+                                <View style={[styles.trendingEventIcon, { backgroundColor: getColorForTag(event.category) + '20' }]}>
+                                    <Ionicons name="flash" size={16} color={getColorForTag(event.category)} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.trendingEventTitle}>{event.title}</Text>
+                                    <Text style={styles.trendingEventCategory}>{event.category}</Text>
+                                </View>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                    <Text style={styles.trendingEventStats}>{event.participants} going</Text>
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
 
                 {/* Zero State Bottom Panel */}
-                {
-                    selectedCoord && trendingEvents.length === 0 && (
-                        <View style={styles.trendingPanel}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                                <Text style={styles.trendingPanelTitle}>No Events Nearby</Text>
-                                <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
-                            </View>
-                            <Text style={{ color: '#94A3B8', fontSize: 16, marginBottom: 20, lineHeight: 22 }}>Buralarda hiç aktivite oluşturulmamış, ilk sen oluştur!</Text>
-                            <TouchableOpacity
-                                style={[styles.joinButton, { width: '100%', alignItems: 'center' }]}
-                                onPress={() => {
-                                    const lat = selectedCoord.latitude;
-                                    const lng = selectedCoord.longitude;
-                                    setSelectedCoord(null);
-                                    router.push({
-                                        pathname: '/(tabs)/create',
-                                        params: { lat, lng }
-                                    });
-                                }}
-                            >
-                                <Text style={styles.joinButtonText}>Create Event Here</Text>
-                            </TouchableOpacity>
+                {selectedCoord && trendingEvents.length === 0 && (
+                    <View style={styles.trendingPanel}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <Text style={styles.trendingPanelTitle}>No Events Nearby</Text>
+                            <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
                         </View>
-                    )
-                }
+                        <Text style={{ color: '#94A3B8', fontSize: 16, marginBottom: 20, lineHeight: 22 }}>No events have been created in this area yet. Be the first!</Text>
+                        <TouchableOpacity
+                            style={[styles.joinButton, { width: '100%', alignItems: 'center' }]}
+                            onPress={() => {
+                                const lat = selectedCoord.latitude;
+                                const lng = selectedCoord.longitude;
+                                setSelectedCoord(null);
+                                router.push({
+                                    pathname: '/(tabs)/create',
+                                    params: { lat, lng }
+                                });
+                            }}
+                        >
+                            <Text style={styles.joinButtonText}>Create Event Here</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
 
-            </View >
-        </SafeAreaView >
+            </View>
+        </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: '#15202B' },
+const createStyles = (theme: ThemeColors) => StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: theme.background },
     container: { flex: 1 },
     mapContainer: { flex: 1, overflow: 'hidden' },
     map: { width: '100%', height: '100%' },
@@ -299,24 +390,50 @@ const styles = StyleSheet.create({
         right: 20,
         zIndex: 10,
     },
+    zoomControls: {
+        position: 'absolute',
+        bottom: 140,
+        right: 20,
+        zIndex: 10,
+        gap: 8,
+    },
+    zoomBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: theme.card,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1.5,
+        borderColor: theme.cardBorder,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        elevation: 6,
+    },
     heatmapToggle: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#1C2733',
+        backgroundColor: theme.card,
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 20,
-        borderWidth: 1,
-        borderColor: '#334155',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 5,
+        borderWidth: 1.5,
+        borderColor: theme.cardBorder,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+        elevation: 6,
     },
     heatmapToggleActive: {
         backgroundColor: '#F59E0B',
         borderColor: '#F59E0B',
     },
     heatmapToggleText: {
-        color: '#94A3B8',
-        fontWeight: 'bold',
+        color: theme.textPrimary,
+        fontWeight: '900',
         marginLeft: 8,
     },
     heatmapNode: {
@@ -337,40 +454,56 @@ const styles = StyleSheet.create({
         borderColor: '#FFF',
     },
 
-    statsBox: {
+    legendContainer: {
         position: 'absolute',
-        bottom: 40,
-        left: 20,
-        right: 20,
-        backgroundColor: '#1C2733',
-        padding: 20,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: '#EF4444',
-        shadowColor: '#EF4444', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10,
+        top: 110,
+        left: 0,
+        right: 0,
+        zIndex: 10,
     },
-    statsTitle: { color: '#EF4444', fontSize: 16, fontWeight: 'bold', marginBottom: 8 },
-    statsText: { color: '#FFF', fontSize: 14, lineHeight: 22 },
+    legendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.card + 'E6',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 14,
+        marginRight: 8,
+        borderWidth: 1.5,
+        borderColor: theme.cardBorder,
+    },
+    legendDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginRight: 6,
+    },
+    legendText: {
+        color: theme.textPrimary,
+        fontSize: 11,
+        fontWeight: '600',
+    },
 
     trendingPanel: {
         position: 'absolute',
         bottom: 20,
         left: 20,
         right: 20,
-        backgroundColor: '#1C2733',
+        backgroundColor: theme.card,
         padding: 24,
         borderRadius: 24,
         borderWidth: 1,
-        borderColor: '#334155',
+        borderColor: theme.cardBorder,
         shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 15, elevation: 10,
     },
-    trendingPanelTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+    trendingPanelTitle: { color: theme.textPrimary, fontSize: 18, fontWeight: 'bold' },
     trendingEventRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
     trendingEventIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(245, 158, 11, 0.15)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-    trendingEventTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', marginBottom: 2 },
-    trendingEventCategory: { color: '#94A3B8', fontSize: 13 },
+    trendingEventTitle: { color: theme.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 2 },
+    trendingEventCategory: { color: theme.textSecondary, fontSize: 13 },
     trendingEventStats: { color: '#F59E0B', fontSize: 14, fontWeight: 'bold' },
 
-    joinButton: { backgroundColor: '#3B82F6', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12, shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+    joinButton: { backgroundColor: theme.primary, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12, shadowColor: theme.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
     joinButtonText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 });
+

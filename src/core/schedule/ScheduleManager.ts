@@ -102,4 +102,59 @@ export class ScheduleManager {
       return [];
     }
   }
+
+  /**
+   * Blocks a time range for an event (auto-blocking when creating/joining).
+   * Rounds start hour down, end hour up to cover full hourly slots.
+   */
+  public async addEventBlock(
+    userId: string,
+    startTime: Date,
+    endTime: Date,
+    eventTitle: string,
+    eventId: string
+  ): Promise<boolean> {
+    try {
+      const schedule = await this.getScheduleFromDB(userId);
+
+      // Check if already blocked for this event
+      const alreadyExists = schedule.some(
+        (s: any) => s.metadata?.eventId === eventId
+      );
+      if (alreadyExists) return true;
+
+      // Round start down to hour, end up to next hour for clean blocks
+      const blockStart = new Date(startTime);
+      blockStart.setMinutes(0, 0, 0);
+
+      const blockEnd = new Date(endTime);
+      if (blockEnd.getMinutes() > 0) {
+        blockEnd.setHours(blockEnd.getHours() + 1);
+        blockEnd.setMinutes(0, 0, 0);
+      }
+
+      const newSlot = new TimeSlot(
+        `event-${eventId}`,
+        userId,
+        blockStart,
+        blockEnd,
+        BlockType.BUSY,
+        DataSource.EVENT,
+        false,
+        {
+          title: eventTitle,
+          type: "Event",
+          color: "#818CF8",
+          eventId: eventId,
+        }
+      );
+
+      schedule.push(newSlot);
+      await this.saveScheduleToDB(schedule, userId);
+      return true;
+    } catch (e) {
+      console.error("addEventBlock error:", e);
+      return false;
+    }
+  }
 }

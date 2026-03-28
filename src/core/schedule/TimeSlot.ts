@@ -7,7 +7,8 @@ export enum BlockType {
 export enum DataSource {
     OCR = 'OCR',
     MANUAL = 'MANUAL',
-    CALENDAR_SYNC = 'CALENDAR_SYNC'
+    CALENDAR_SYNC = 'CALENDAR_SYNC',
+    EVENT = 'EVENT'
 }
 
 export enum DayOfWeek {

@@ -14,8 +14,12 @@ import {
 } from "react-native";
 import { useAuthStore } from "../../src/store/authStore";
 import { useUIStore } from "../../src/store/uiStore";
+import { useTheme } from "../../src/theme/useTheme";
+import { ThemeColors } from "../../src/theme/colors";
 
 export default function EditProfileScreen() {
+  const theme = useTheme();
+  const styles = createStyles(theme);
   const { showToast, setGlobalLoading } = useUIStore();
   const { userEmail } = useAuthStore();
 
@@ -34,8 +38,7 @@ export default function EditProfileScreen() {
           await import("../../src/core/identity/UserManager");
         const controller = new UserController(
           UserManager.getInstance(),
-          {} as any,
-          {} as any,
+          {} as any
         );
         const res = await controller.getMyProfile();
         if (res.status === 200 && res.data) {
@@ -80,8 +83,7 @@ export default function EditProfileScreen() {
 
     const userController = new UserController(
       UserManager.getInstance(),
-      {} as any, // FriendshipManager (stub for now if not needed)
-      {} as any, // GamificationManager (stub for now if not needed)
+      {} as any // FriendshipManager (stub for now if not needed)
     );
 
     setGlobalLoading(true);
@@ -176,8 +178,8 @@ export default function EditProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#0B1120" },
+const createStyles = (theme: ThemeColors) => StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: theme.background },
 
   header: {
     flexDirection: "row",
@@ -190,58 +192,50 @@ const styles = StyleSheet.create({
   backBtn: { minHeight: 44, justifyContent: "center" },
   headerTitle: {
     fontSize: 20,
-    fontWeight: "800",
-    color: "#F8FAFC",
-    letterSpacing: 0.5,
+    fontWeight: "bold",
+    color: theme.textPrimary,
+    flex: 1,
   },
 
-  container: { paddingHorizontal: 20, paddingBottom: 40 },
+  container: { padding: 24, paddingBottom: 100 },
 
-  imageSection: { alignItems: "center", marginTop: 24, marginBottom: 40 },
+  imageSection: { alignItems: "center", marginBottom: 40 },
   imageContainer: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    position: "relative",
-    shadowColor: "#3B82F6",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 10,
+    backgroundColor: theme.card,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: theme.primary,
+    overflow: "hidden",
   },
-  profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: "#3B82F6",
-  },
+  profileImage: { width: "100%", height: "100%" },
   placeholderImage: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "#3B82F6",
+    backgroundColor: theme.primary,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 3,
-    borderColor: "rgba(59, 130, 246, 0.5)",
   },
   placeholderText: { fontSize: 48, fontWeight: "800", color: "#FFF" },
   editIconBadge: {
     position: "absolute",
     bottom: 0,
     right: 0,
-    backgroundColor: "#10B981",
+    backgroundColor: theme.primary,
     width: 36,
     height: 36,
     borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 3,
-    borderColor: "#0B1120",
+    borderColor: theme.background,
   },
   imageHelpText: {
-    color: "#94A3B8",
+    color: theme.textSecondary,
     fontSize: 13,
     marginTop: 16,
     fontWeight: "500",
@@ -249,7 +243,7 @@ const styles = StyleSheet.create({
 
   formSection: { marginBottom: 32 },
   label: {
-    color: "#64748B",
+    color: theme.textSecondary,
     fontSize: 12,
     fontWeight: "800",
     textTransform: "uppercase",
@@ -258,30 +252,30 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   input: {
-    backgroundColor: "#15202B",
-    color: "#F8FAFC",
+    backgroundColor: theme.card,
+    color: theme.textPrimary,
     height: 56,
     borderRadius: 16,
     paddingHorizontal: 16,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: "#1C2733",
+    borderColor: theme.cardBorder,
     fontSize: 16,
   },
   textArea: { height: 120, paddingTop: 16 },
   disabledInput: {
-    backgroundColor: "#0B1120",
-    color: "#64748B",
-    borderColor: "#15202B",
+    backgroundColor: theme.surface,
+    color: theme.textSecondary,
+    borderColor: theme.cardBorder,
   },
 
   saveBtn: {
-    backgroundColor: "#3B82F6",
+    backgroundColor: theme.primary,
     height: 56,
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#3B82F6",
+    shadowColor: theme.primary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 12,

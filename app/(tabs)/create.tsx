@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import * as Location from 'expo-location';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
 import { EventController } from '../../src/controllers/EventController';
 import { ConflictEngine } from '../../src/core/event/ConflictEngine';
@@ -13,9 +14,12 @@ import { AuthManager } from '../../src/core/identity/AuthManager';
 import { NotificationService } from '../../src/infra/NotificationService';
 import { SupabaseClient } from '../../src/infra/SupabaseClient';
 import { RecommendationEngine } from '../../src/intelligence/RecommendationEngine';
+import { INTEREST_TAGS, InterestTag } from '../../src/data/interestTags';
+import { useAuthStore } from '../../src/store/authStore';
 import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
 import { useTheme } from '../../src/theme/useTheme';
+import { ANKARA_NEIGHBORHOODS, searchLocations, isWithinAnkara } from '../../src/data/locations';
 
 // DI Setup
 const recommendationEngine = RecommendationEngine.getInstance();
@@ -85,7 +89,7 @@ export default function CreateEventScreen() {
         }, [])
     );
 
-    const CATEGORIES = ['Sports', 'Academic', 'Social', 'Gaming', 'Music', 'Tech'];
+    const [categorySearch, setCategorySearch] = useState('');
 
     // Manual Form State
     const [title, setTitle] = useState('');
@@ -95,11 +99,164 @@ export default function CreateEventScreen() {
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
     const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+    const [selectedCategoryIcon, setSelectedCategoryIcon] = useState('');
     const [showDurationPicker, setShowDurationPicker] = useState(false);
+
+    const mapRef = React.useRef<MapView>(null);
+    const [currentRegion, setCurrentRegion] = useState<Region>({
+        latitude: 39.92077,
+        longitude: 32.85411,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+    });
+
+    const handleZoom = (zoomIn: boolean) => {
+        const factor = zoomIn ? 0.5 : 2;
+        const newRegion = {
+            ...currentRegion,
+            latitudeDelta: currentRegion.latitudeDelta * factor,
+            longitudeDelta: currentRegion.longitudeDelta * factor,
+        };
+        setCurrentRegion(newRegion);
+        mapRef.current?.animateToRegion(newRegion, 300);
+    };
     const [capacity, setCapacity] = useState('10');
     const [isPrivate, setIsPrivate] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState<{ latitude: number, longitude: number } | null>(null);
     const [conflictWarning, setConflictWarning] = useState<string | null>(null);
+    const [locationSearchQuery, setLocationSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<{id: string; name: string; latitude: number; longitude: number; source: 'local' | 'remote'}[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+    const handleSearchLocation = async () => {
+        if (!locationSearchQuery.trim()) return;
+        setIsSearching(true);
+        
+        try {
+            // 1. Local matches (already showing via onChangeText, but ensure they're set)
+            const localMatches = searchLocations(locationSearchQuery).map(n => ({
+                id: n.id,
+                name: n.label,
+                latitude: n.latitude,
+                longitude: n.longitude,
+                source: 'local' as const,
+            }));
+
+            // 2. Also try geocoding, but STRICTLY filter to Ankara bounds
+            const queryWithCity = locationSearchQuery.toLowerCase().includes('ankara')
+                ? locationSearchQuery
+                : `${locationSearchQuery}, Ankara, Turkey`;
+
+            try {
+                const locRes = await Location.geocodeAsync(queryWithCity);
+                if (locRes && locRes.length > 0) {
+                    // Filter: ONLY results within Ankara geographic bounds
+                    const ankaraResults = locRes.filter(r => isWithinAnkara(r.latitude, r.longitude));
+                    
+                    if (ankaraResults.length > 0) {
+                        const resultsWithAddresses = await Promise.all(
+                            ankaraResults.slice(0, 3).map(async (res) => {
+                                const addr = await Location.reverseGeocodeAsync({ latitude: res.latitude, longitude: res.longitude });
+                                const a = addr[0];
+                                const name = a
+                                    ? [a.street, a.district, a.subregion].filter(Boolean).join(', ')
+                                    : `${res.latitude.toFixed(4)}, ${res.longitude.toFixed(4)}`;
+                                return {
+                                    id: `geo-${res.latitude.toFixed(5)}-${res.longitude.toFixed(5)}`,
+                                    name: name || 'Ankara',
+                                    latitude: res.latitude,
+                                    longitude: res.longitude,
+                                    source: 'remote' as const,
+                                };
+                            })
+                        );
+
+                        // Combine: local first, then remote (no duplicates)
+                        const combined: {id: string; name: string; latitude: number; longitude: number; source: 'local' | 'remote'}[] = [...localMatches];
+                        resultsWithAddresses.forEach(remote => {
+                            const isDuplicate = combined.some(l =>
+                                Math.abs(l.latitude - remote.latitude) < 0.002 &&
+                                Math.abs(l.longitude - remote.longitude) < 0.002
+                            );
+                            if (!isDuplicate) combined.push(remote);
+                        });
+                        setSearchResults(combined);
+                    } else {
+                        // No Ankara results from geocoding, just show local
+                        setSearchResults(localMatches);
+                    }
+                } else {
+                    setSearchResults(localMatches);
+                }
+            } catch {
+                // Geocoding failed, show local matches only
+                setSearchResults(localMatches);
+            }
+
+            if (localMatches.length === 0) {
+                // Check if we have anything to show at all
+                // (searchResults may have been set above with remote results)
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("Search failed", "error");
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    // Live autocomplete from local list as user types
+    const handleSearchTextChange = (txt: string) => {
+        setLocationSearchQuery(txt);
+        if (txt.trim().length === 0) {
+            setSearchResults([]);
+            return;
+        }
+        // Instant local filtering
+        const matches = searchLocations(txt).slice(0, 8).map(n => ({
+            id: n.id,
+            name: n.label,
+            latitude: n.latitude,
+            longitude: n.longitude,
+            source: 'local' as const,
+        }));
+        setSearchResults(matches);
+    };
+
+    const moveToLocation = (latitude: number, longitude: number) => {
+        const newRegion = {
+            ...currentRegion,
+            latitude,
+            longitude,
+            latitudeDelta: 0.012,
+            longitudeDelta: 0.012,
+        };
+        setCurrentRegion(newRegion);
+        mapRef.current?.animateToRegion(newRegion, 1000);
+    };
+
+    const updateSearchQueryFromCoords = async (lat: number, lng: number) => {
+        try {
+            const addr = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+            if (addr && addr[0]) {
+                const parts = [
+                    addr[0].name,
+                    addr[0].street,
+                    addr[0].district,
+                    addr[0].city
+                ].filter(Boolean);
+                setLocationSearchQuery(parts.slice(0, 2).join(', '));
+            }
+        } catch (e) {
+            console.log("Reverse geocode failed", e);
+        }
+    };
+
+    const handleMapPress = (coord: { latitude: number, longitude: number }) => {
+        setSelectedLocation(coord);
+        updateSearchQueryFromCoords(coord.latitude, coord.longitude);
+        setSearchResults([]);
+    };
 
     const params = useLocalSearchParams();
 
@@ -159,9 +316,9 @@ export default function CreateEventScreen() {
 
         setGlobalLoading(true);
         try {
-            await eventController.createEvent({
+            const res = await eventController.createEvent({
                 title,
-                category,
+                sub_category: category,
                 time: date,
                 duration: durationStr,
                 location_lat: selectedLocation.latitude,
@@ -174,10 +331,12 @@ export default function CreateEventScreen() {
                 const notificationService = NotificationService.getInstance();
                 for (const friend of aiSuggestedFriends) {
                     if (friend.id) {
-                        await notificationService.sendFriendEventNotification(
+                        await notificationService.sendEventInvite(
                             friend.id,
                             title,
-                            currentUser.full_name || "Your friend"
+                            res.data?.id || 'unknown',
+                            currentUser.full_name || "Your friend",
+                            currentUser.id
                         );
                     }
                 }
@@ -358,21 +517,69 @@ export default function CreateEventScreen() {
             )}
             {conflictWarning ? <Text style={styles.errorText}>{conflictWarning}</Text> : null}
 
-            {/* Category Picker Modal */}
-            <Modal visible={showCategoryPicker} transparent animationType="fade">
+            {/* Category Picker Modal — Searchable Interest Tags */}
+            <Modal visible={showCategoryPicker} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
-                    <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowCategoryPicker(false)} />
-                    <View style={styles.modalContentList}>
+                    <TouchableOpacity style={styles.modalBackdrop} onPress={() => { setShowCategoryPicker(false); setCategorySearch(''); }} />
+                    <View style={[styles.modalContentList, { maxHeight: '70%' }]}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalHeaderText}>Select Category</Text>
-                            <TouchableOpacity onPress={() => setShowCategoryPicker(false)}><Ionicons name="close" size={24} color={theme.textSecondary} /></TouchableOpacity>
+                            <TouchableOpacity onPress={() => { setShowCategoryPicker(false); setCategorySearch(''); }}><Ionicons name="close" size={24} color={theme.textSecondary} /></TouchableOpacity>
                         </View>
-                        {CATEGORIES.map(cat => (
-                            <TouchableOpacity key={cat} style={styles.modalListItem} onPress={() => { setCategory(cat); setShowCategoryPicker(false); }}>
-                                <Text style={[styles.modalListText, category === cat && { color: theme.primary, fontWeight: '700' }]}>{cat}</Text>
-                                {category === cat && <Ionicons name="checkmark" size={20} color={theme.primary} />}
-                            </TouchableOpacity>
-                        ))}
+                        <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                            <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', marginBottom: 0, paddingHorizontal: 12 }]}>
+                                <Ionicons name="search" size={18} color={theme.textSecondary} style={{ marginRight: 8 }} />
+                                <TextInput
+                                    style={{ flex: 1, color: theme.textPrimary, fontSize: 16, height: 44 }}
+                                    placeholder="Search interests..."
+                                    placeholderTextColor={theme.textSecondary}
+                                    value={categorySearch}
+                                    onChangeText={setCategorySearch}
+                                    autoFocus={true}
+                                />
+                                {categorySearch.length > 0 && (
+                                    <TouchableOpacity onPress={() => setCategorySearch('')}>
+                                        <Ionicons name="close-circle" size={18} color={theme.textSecondary} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        </View>
+                        <FlatList
+                            data={INTEREST_TAGS.filter(tag =>
+                                tag.title.toLowerCase().includes(categorySearch.toLowerCase()) ||
+                                tag.category.toLowerCase().includes(categorySearch.toLowerCase())
+                            )}
+                            keyExtractor={(item) => item.id}
+                            keyboardShouldPersistTaps="handled"
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={[styles.modalListItem, category === item.title && { backgroundColor: item.color + '15' }]}
+                                    onPress={() => {
+                                        setCategory(item.title);
+                                        setSelectedCategoryIcon(item.icon);
+                                        setShowCategoryPicker(false);
+                                        setCategorySearch('');
+                                    }}
+                                >
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: item.color + '20', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                                            <Ionicons name={item.icon as any} size={18} color={item.color} />
+                                        </View>
+                                        <View>
+                                            <Text style={[styles.modalListText, category === item.title && { color: item.color, fontWeight: '700' }]}>{item.title}</Text>
+                                            <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>{item.category}</Text>
+                                        </View>
+                                    </View>
+                                    {category === item.title && <Ionicons name="checkmark-circle" size={22} color={item.color} />}
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={
+                                <View style={{ padding: 24, alignItems: 'center' }}>
+                                    <Ionicons name="search-outline" size={40} color={theme.textSecondary} />
+                                    <Text style={{ color: theme.textSecondary, marginTop: 8, fontSize: 14 }}>No matching interests found</Text>
+                                </View>
+                            }
+                        />
                     </View>
                 </View>
             </Modal>
@@ -398,18 +605,78 @@ export default function CreateEventScreen() {
                 </View>
             </Modal>
 
-            <Text style={styles.sectionTitle}>3. Location</Text>
-            <View style={styles.mapContainer}>
+            <View style={[styles.mapContainer, { paddingTop: 0, height: 400 }]}>
+                {/* Search Bar Overlay - Professional Native Style */}
+                <View style={styles.floatingSearchContainer}>
+                    <View style={styles.searchBarWrapper}>
+                        <Ionicons name="location" size={20} color={theme.primary} style={{ marginLeft: 12 }} />
+                        <TextInput 
+                            style={styles.floatingSearchInput}
+                            placeholder="Find a location..."
+                            placeholderTextColor={theme.textSecondary}
+                            value={locationSearchQuery}
+                            onChangeText={handleSearchTextChange}
+                            onSubmitEditing={handleSearchLocation}
+                        />
+                        {isSearching ? (
+                            <View style={{ marginRight: 12 }}><Text style={{ color: theme.primary, fontSize: 12 }}>...</Text></View>
+                        ) : (
+                            <TouchableOpacity style={{ padding: 10 }} onPress={handleSearchLocation}>
+                                <Ionicons name="search" size={20} color={theme.textSecondary} />
+                            </TouchableOpacity>
+                        )}
+                        {locationSearchQuery.length > 0 && (
+                            <TouchableOpacity style={{ padding: 10 }} onPress={() => { setLocationSearchQuery(''); setSearchResults([]); }}>
+                                <Ionicons name="close-circle" size={18} color={theme.textSecondary} />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    {/* Results Selection List */}
+                    {searchResults.length > 0 && (
+                        <View style={styles.searchResultsDropdown}>
+                            {searchResults.map((item, index) => (
+                                <TouchableOpacity
+                                    key={item.id || index.toString()}
+                                    style={[
+                                        styles.searchResultItem,
+                                        index !== searchResults.length - 1 && styles.searchResultBorder
+                                    ]}
+                                    onPress={() => {
+                                        moveToLocation(item.latitude, item.longitude);
+                                        setSelectedLocation({ latitude: item.latitude, longitude: item.longitude });
+                                        setLocationSearchQuery(item.name);
+                                        setSearchResults([]);
+                                    }}
+                                >
+                                    <View style={styles.resultIconContainer}>
+                                        <Ionicons 
+                                            name={item.source === 'local' ? "location" : "navigate"} 
+                                            size={18} 
+                                            color={item.source === 'local' ? theme.primary : theme.textSecondary} 
+                                        />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.searchResultText} numberOfLines={1}>
+                                            {item.name}
+                                        </Text>
+                                        {item.source === 'local' && (
+                                            <Text style={styles.searchResultSubtext}>GatherUp Verified Location</Text>
+                                        )}
+                                    </View>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                </View>
+
                 <MapView
+                    ref={mapRef}
                     provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                     style={{ flex: 1 }}
-                    initialRegion={{
-                        latitude: 39.92077,
-                        longitude: 32.85411,
-                        latitudeDelta: 0.05,
-                        longitudeDelta: 0.05,
-                    }}
-                    onPress={(e) => setSelectedLocation(e.nativeEvent.coordinate)}
+                    initialRegion={currentRegion}
+                    onRegionChangeComplete={(region) => setCurrentRegion(region)}
+                    onPress={(e) => handleMapPress(e.nativeEvent.coordinate)}
                 >
                     {selectedLocation && (
                         <Marker coordinate={selectedLocation} pinColor={theme.primary} />
@@ -420,6 +687,16 @@ export default function CreateEventScreen() {
                         <Text style={styles.mapOverlayText}>Tap map to select location</Text>
                     </View>
                 )}
+
+                {/* Zoom Controls */}
+                <View style={styles.zoomControls}>
+                    <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom(true)} activeOpacity={0.7}>
+                        <Ionicons name="add" size={24} color="#FFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom(false)} activeOpacity={0.7}>
+                        <Ionicons name="remove" size={24} color="#FFF" />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <Text style={styles.sectionTitle}>4. Settings</Text>
@@ -465,10 +742,17 @@ export default function CreateEventScreen() {
                 ) : (
                     myFriends.map(friend => {
                         const isSelected = selectedFriends.some((f: any) => f.id === friend.id);
+                        const isBusy = friend.current_status === 'busy';
+                        
                         return (
                             <TouchableOpacity
                                 key={friend.id}
-                                style={[styles.friendRow, isSelected && { backgroundColor: theme.primary + '10' }]}
+                                style={[
+                                    styles.friendRow, 
+                                    isSelected && { backgroundColor: theme.primary + '10' },
+                                    isBusy && { opacity: 0.6 }
+                                ]}
+                                disabled={isBusy}
                                 onPress={() => {
                                     if (isSelected) {
                                         setSelectedFriends(prev => prev.filter((f: any) => f.id !== friend.id));
@@ -477,16 +761,20 @@ export default function CreateEventScreen() {
                                     }
                                 }}
                             >
-                                <View style={styles.friendAvatar}>
+                                <View style={[styles.friendAvatar, isBusy && { backgroundColor: theme.textSecondary }]}>
                                     <Text style={styles.friendInitial}>{friend.full_name ? friend.full_name.charAt(0) : 'F'}</Text>
                                 </View>
                                 <View style={styles.friendInfo}>
-                                    <Text style={styles.mockFriendName}>{friend.full_name}</Text>
-                                    <Text style={isSelected ? styles.friendStatusOnline : styles.friendStatusBusy}>
-                                        {isSelected ? 'Included in Plan' : 'Tap to Include'}
+                                    <Text style={[styles.mockFriendName, isBusy && { color: theme.textSecondary }]}>{friend.full_name}</Text>
+                                    <Text style={isBusy ? styles.friendStatusBusy : (isSelected ? styles.friendStatusOnline : styles.friendStatusOffline)}>
+                                        {isBusy ? 'Busy (Unavailable)' : (isSelected ? 'Included in Plan' : 'Tap to Include')}
                                     </Text>
                                 </View>
-                                <Ionicons name={isSelected ? "checkmark-circle" : "ellipse-outline"} size={24} color={isSelected ? "#10B981" : "#64748B"} />
+                                {isBusy ? (
+                                    <Ionicons name="remove-circle-outline" size={24} color={theme.textSecondary} />
+                                ) : (
+                                    <Ionicons name={isSelected ? "checkmark-circle" : "ellipse-outline"} size={24} color={isSelected ? theme.success : theme.textSecondary} />
+                                )}
                             </TouchableOpacity>
                         );
                     })
@@ -606,14 +894,92 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
     settingsRow: { flexDirection: 'row', justifyContent: 'space-between' },
     flex1: { flex: 1 },
     label: { color: theme.textSecondary, fontSize: 13, marginBottom: 8, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-    mapContainer: { height: 200, borderRadius: 16, overflow: 'hidden', marginBottom: 24, borderWidth: 1, borderColor: theme.cardBorder },
-    mapOverlayHint: { position: 'absolute', bottom: 16, alignSelf: 'center', backgroundColor: 'rgba(15, 23, 42, 0.8)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-    mapOverlayText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+    mapContainer: {
+        height: 380,
+        borderRadius: 16,
+        overflow: 'hidden',
+        marginBottom: 24,
+        borderWidth: 1,
+        borderColor: '#2D3748',
+    },
+    floatingSearchContainer: {
+        position: 'absolute',
+        top: 16,
+        left: 12,
+        right: 12,
+        zIndex: 100,
+    },
+    searchBarWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.card,
+        borderRadius: 12,
+        height: 50,
+        elevation: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        borderWidth: 1,
+        borderColor: theme.cardBorder,
+    },
+    floatingSearchInput: {
+        flex: 1,
+        height: '100%',
+        color: theme.textPrimary,
+        fontSize: 15,
+        paddingHorizontal: 12,
+    },
+    searchResultsDropdown: {
+        backgroundColor: theme.card,
+        marginTop: 6,
+        borderRadius: 12,
+        maxHeight: 200,
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        borderWidth: 1,
+        borderColor: theme.cardBorder,
+        overflow: 'hidden',
+    },
+    searchResultItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 14,
+    },
+    searchResultBorder: {
+        borderBottomWidth: 1,
+        borderBottomColor: theme.cardBorder,
+    },
+    resultIconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: theme.primaryLight,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    searchResultText: {
+        color: theme.textPrimary,
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    searchResultSubtext: {
+        color: theme.primary,
+        fontSize: 11,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        marginTop: 2,
+    },
+    mapOverlayHint: { position: 'absolute', bottom: 16, alignSelf: 'center', backgroundColor: theme.surface, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+    mapOverlayText: { color: theme.textPrimary, fontSize: 13, fontWeight: '600' },
     toggleBtn: { backgroundColor: theme.inputBg, height: 56, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.inputBorder },
-    toggleActive: { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6', shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+    toggleActive: { backgroundColor: theme.primary, borderColor: theme.primary, shadowColor: theme.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
     toggleText: { color: theme.textSecondary, fontWeight: '700', fontSize: 15 },
-
-    submitButton: { backgroundColor: '#10B981', height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 40, shadowColor: '#10B981', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
+    submitButton: { backgroundColor: theme.success, height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 40, shadowColor: theme.success, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
     submitButtonText: { color: '#FFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
     buttonDisabled: { backgroundColor: theme.cardBorder, shadowOpacity: 0, elevation: 0 },
 
@@ -630,7 +996,7 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
     modalListText: { color: theme.textPrimary, fontSize: 16, fontWeight: '500' },
 
     aiContainer: { flex: 1, alignItems: 'center', paddingTop: 32 },
-    aiHeaderIcon: { width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(139, 92, 246, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.2)' },
+    aiHeaderIcon: { width: 100, height: 100, borderRadius: 50, backgroundColor: theme.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: theme.cardBorder },
     aiTitle: { fontSize: 28, fontWeight: '900', color: theme.textPrimary, marginBottom: 12, letterSpacing: -0.5 },
     aiSubtitle: { fontSize: 15, color: theme.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: 40, paddingHorizontal: 10 },
 
@@ -643,9 +1009,33 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
     friendInitial: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
     friendInfo: { flex: 1 },
     mockFriendName: { color: theme.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 4 },
-    friendStatusOnline: { color: '#10B981', fontSize: 13, fontWeight: '500' },
-    friendStatusBusy: { color: '#F59E0B', fontSize: 13, fontWeight: '500' },
+    friendStatusOnline: { color: theme.success, fontSize: 13, fontWeight: '500' },
+    friendStatusOffline: { color: theme.textSecondary, fontSize: 13, fontWeight: '500' },
+    friendStatusBusy: { color: theme.danger, fontSize: 13, fontWeight: '500' },
 
-    aiButton: { flexDirection: 'row', backgroundColor: '#8B5CF6', height: 60, width: '100%', borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10 },
+    aiButton: { flexDirection: 'row', backgroundColor: theme.primary, height: 60, width: '100%', borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: theme.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10 },
     aiButtonText: { color: '#FFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
+
+    zoomControls: {
+        position: 'absolute',
+        bottom: 16,
+        right: 16,
+        zIndex: 10,
+        gap: 8,
+    },
+    zoomBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: theme.surface,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: theme.cardBorder,
+        shadowColor: '#000', 
+        shadowOffset: { width: 0, height: 2 }, 
+        shadowOpacity: 0.5, 
+        shadowRadius: 5, 
+        elevation: 6,
+    },
 });

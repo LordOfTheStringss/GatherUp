@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   Modal,
@@ -59,11 +59,19 @@ export default function OCRScheduleScreen() {
   const theme = useTheme();
   const styles = createStyles(theme);
 
+  const { date, day } = useLocalSearchParams();
+
   const [step, setStep] = useState<"type_select" | "calendar_view">(
     "calendar_view",
   );
   const [schedule, setSchedule] = useState<TimeSlot[]>([]);
-  const [activeTab, setActiveTab] = useState<number>(1);
+  const [activeTab, setActiveTab] = useState<number>(
+    day ? parseInt(day as string) : 1
+  );
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(
+    (date as string) || null
+  );
+  const [userId, setUserId] = useState<string>("user-123");
 
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
@@ -96,9 +104,16 @@ export default function OCRScheduleScreen() {
       const loadExistingSchedule = async () => {
         setGlobalLoading(true);
         try {
+          const { AuthManager } = await import("../../src/core/identity/AuthManager");
+          const user = await AuthManager.getInstance().getCurrentUser();
+          
+          if (user) {
+            setUserId(user.id);
+          }
+
           const res = await scheduleController.getMySchedule(
             new Date(),
-            "user-123",
+            user?.id || "user-123"
           );
           if (res.status === 200 && res.data?.busyBlocks) {
             setSchedule(res.data.busyBlocks);
@@ -157,7 +172,20 @@ export default function OCRScheduleScreen() {
     return schedule.find((s: any) => {
       if (!s.startTime) return false;
       const st = new Date(s.startTime);
-      return st.getDay() === activeTab && st.getHours() === hourInt;
+      const et = new Date(s.endTime);
+
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const localDateStr = `${st.getFullYear()}-${pad(st.getMonth() + 1)}-${pad(st.getDate())}`;
+
+      const isDateMatch = s.isRecurring
+        ? st.getDay() === activeTab
+        : (selectedDateFilter && st.getDay() === activeTab ? localDateStr === selectedDateFilter : false);
+
+      return (
+        isDateMatch &&
+        st.getHours() <= hourInt &&
+        et.getHours() > hourInt
+      );
     });
   };
 
@@ -173,17 +201,25 @@ export default function OCRScheduleScreen() {
       setGlobalLoading(true);
       const response = await scheduleController.processScheduleImage(
         result.assets[0].base64,
-        "user-123",
+        userId,
       );
       if (response.status !== 200 || !response.data)
         throw new Error(response.message);
 
       const coloredSlots = response.data.map((slot: any) => {
+        const st = new Date(slot.startTime);
+        const et = new Date(slot.endTime);
+        
+        // Ensure at least 1 minute duration to prevent constructor crash
+        if (st.getTime() >= et.getTime()) {
+          et.setMinutes(st.getMinutes() + 30);
+        }
+
         return new TimeSlot(
           slot.slotId || uuidv4(),
-          "user-123",
-          new Date(slot.startTime),
-          new Date(slot.endTime),
+          userId,
+          st,
+          et,
           BlockType.BUSY,
           DataSource.OCR,
           false,
@@ -228,7 +264,7 @@ export default function OCRScheduleScreen() {
 
     const newSlot = new TimeSlot(
       uuidv4(),
-      "user-123",
+      userId,
       startDate,
       endDate,
       BlockType.BUSY,
@@ -258,7 +294,7 @@ export default function OCRScheduleScreen() {
   const handleConfirm = async () => {
     setGlobalLoading(true);
     try {
-      await scheduleController.confirmSchedule(schedule, "user-123");
+      await scheduleController.confirmSchedule(schedule, userId);
       showToast("All changes saved!", "success");
       router.replace("/profile");
     } catch (error) {
@@ -415,7 +451,13 @@ export default function OCRScheduleScreen() {
           <TouchableOpacity
             key={day.label}
             style={[styles.tab, activeTab === day.index && styles.activeTab]}
-            onPress={() => setActiveTab(day.index)}
+            onPress={() => {
+              setActiveTab(day.index);
+              // Clear specific date filter if day tab doesn't match selected calendar date's day
+              if (day.index.toString() !== activeTab.toString()) {
+                setSelectedDateFilter(null);
+              }
+            }}
           >
             <Text
               style={[

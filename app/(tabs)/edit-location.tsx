@@ -14,8 +14,7 @@ import { useTheme } from '../../src/theme/useTheme';
 
 const userController = new UserController(
     UserManager.getInstance(),
-    new FriendshipManager(null as any),
-    new GamificationManager()
+    new FriendshipManager(null as any)
 );
 
 export default function EditLocationScreen() {

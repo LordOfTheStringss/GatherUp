@@ -1,8 +1,12 @@
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuthStore } from '../../src/store/authStore';
 import { useUIStore } from '../../src/store/uiStore';
+import { Ionicons } from '@expo/vector-icons';
+import { ANKARA_NEIGHBORHOODS } from '../../src/data/locations';
+import { ThemeColors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/useTheme';
 
 export default function RegisterScreen() {
     const [fullName, setFullName] = useState('');
@@ -12,159 +16,124 @@ export default function RegisterScreen() {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [baseLocation, setBaseLocation] = useState('');
+    const [baseLocationSearch, setBaseLocationSearch] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+
     const { register } = useAuthStore();
     const { showToast } = useUIStore();
+    const theme = useTheme();
+    const styles = createStyles(theme);
+
+    const filteredNeighborhoods = useMemo(() => {
+        if (!baseLocationSearch) return ANKARA_NEIGHBORHOODS;
+        return ANKARA_NEIGHBORHOODS.filter(n =>
+            n.label.toLowerCase().includes(baseLocationSearch.toLowerCase())
+        );
+    }, [baseLocationSearch]);
 
     const handleRegister = async () => {
         if (!fullName || !username || !age || !email || !password || !confirmPassword || !baseLocation) {
             showToast('Please fill in all fields.', 'error');
             return;
         }
-
         if (password !== confirmPassword) {
             showToast('Passwords do not match.', 'error');
             return;
         }
-
         try {
             const success = await register({ fullName, username, age, email, password, baseLocation });
             if (success) {
-                showToast('Registration successful! Check your email to verify.', 'success');
-                // Navigating to interest selection or login
-                router.push('/(auth)/interests'); // We will build this next
+                showToast('Registration successful! Verify your email.', 'success');
+                router.push('/(auth)/interests');
             } else {
                 showToast('Registration failed.', 'error');
             }
         } catch (error: any) {
-            // Mapping technical errors to user-friendly English messages
-            let errorMessage = 'An error occurred. Please try again.';
-            
-            if (error.name === 'InvalidDomainException' || error.message.includes('authorized')) {
-                errorMessage = "Please use an allowed institutional or corporate email address.";
-            } else if (error.name === 'AgeRestrictedException' || error.message.includes('18')) {
-                errorMessage = "You must be over 18 to register.";
-            } else if (error.message.includes('username') || error.message.includes('taken')) {
-                errorMessage = 'This username is already taken.';
-            } else if (error.message.includes('email') || error.message.includes('exists') || error.message.includes('registered')) {
-                errorMessage = 'An account with this email address already exists.';
-            } else if (error.message.includes('password')) {
-                errorMessage = 'Password must be at least 6 characters.';
-            } else {
-                errorMessage = error.message || 'Registration failed.';
-            }
-
-            showToast(errorMessage, 'error');
+            showToast(error.message || 'Registration failed.', 'error');
         }
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
-        >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-                <View style={styles.logoContainer}>
-                    <Text style={styles.logoText}>Gather<Text style={{ color: '#3B82F6' }}>Up</Text></Text>
+                <TouchableOpacity 
+                    style={styles.backBtn} 
+                    onPress={() => router.back()}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
+                </TouchableOpacity>
+
+                <View style={styles.header}>
+                    <Text style={styles.title}>Join GatherUp</Text>
+                    <Text style={styles.subtitle}>Create your profile to start meeting</Text>
                 </View>
 
-                <Text style={styles.title}>Create Account</Text>
-                <Text style={styles.subtitle}>Use your institutional email to join your campus network.</Text>
+                <View style={styles.form}>
+                    <InputGroup label="Full Name" icon="person-outline" theme={theme} styles={styles}>
+                        <TextInput style={styles.input} placeholder="John Doe" placeholderTextColor={theme.textSecondary} value={fullName} onChangeText={setFullName} autoCapitalize="words" />
+                    </InputGroup>
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="Full Name"
-                    placeholderTextColor="#7f8c8d"
-                    value={fullName}
-                    onChangeText={setFullName}
-                    autoCapitalize="words"
-                />
+                    <InputGroup label="Username" icon="at-outline" theme={theme} styles={styles}>
+                        <TextInput style={styles.input} placeholder="johndoe123" placeholderTextColor={theme.textSecondary} value={username} onChangeText={setUsername} autoCapitalize="none" />
+                    </InputGroup>
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="Username"
-                    placeholderTextColor="#7f8c8d"
-                    value={username}
-                    onChangeText={setUsername}
-                    autoCapitalize="none"
-                />
+                    <View style={styles.row}>
+                        <View style={[styles.inputGroup, { flex: 0.4 }]}>
+                            <Text style={styles.label}>AGE</Text>
+                            <View style={styles.inputWrapper}>
+                                <TextInput style={styles.input} placeholder="18" placeholderTextColor={theme.textSecondary} value={age} onChangeText={setAge} keyboardType="number-pad" maxLength={2} />
+                            </View>
+                        </View>
+                        <View style={[styles.inputGroup, { flex: 1, marginLeft: 12 }]}>
+                            <Text style={styles.label}>EMAIL (INSTITUTIONAL)</Text>
+                            <View style={styles.inputWrapper}>
+                                <TextInput style={styles.input} placeholder="john@edu.tr" placeholderTextColor={theme.textSecondary} value={email} onChangeText={setEmail} autoCapitalize="none" />
+                            </View>
+                        </View>
+                    </View>
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="Age"
-                    placeholderTextColor="#7f8c8d"
-                    value={age}
-                    onChangeText={setAge}
-                    keyboardType="number-pad"
-                    maxLength={3}
-                />
-
-                <TextInput
-                    style={styles.input}
-                    placeholder="Institutional Email (e.g., student@abc.edu.tr)"
-                    placeholderTextColor="#7f8c8d"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                />
-
-                <Text style={{ color: '#F8FAFC', marginBottom: 8, marginLeft: 4, fontWeight: '600' }}>Base Location (Ankara)</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                    {require('../../src/data/locations').ANKARA_NEIGHBORHOODS.map((loc: any) => (
-                        <TouchableOpacity
-                            key={loc.id}
-                            style={{
-                                backgroundColor: baseLocation === loc.label ? 'rgba(59, 130, 246, 0.2)' : '#1C2733',
-                                paddingHorizontal: 16,
-                                paddingVertical: 10,
-                                borderRadius: 20,
-                                marginRight: 8,
-                                borderWidth: 1,
-                                borderColor: baseLocation === loc.label ? '#3B82F6' : '#2B3847'
-                            }}
-                            onPress={() => setBaseLocation(loc.label)}
-                        >
-                            <Text style={{ color: baseLocation === loc.label ? '#3B82F6' : '#94A3B8', fontWeight: '500' }}>
-                                {loc.label.split(',')[0]}
-                            </Text>
+                    <InputGroup label="Password" icon="lock-closed-outline" theme={theme} styles={styles}>
+                        <TextInput style={styles.input} placeholder="••••••••" placeholderTextColor={theme.textSecondary} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} />
+                        <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
+                            <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={theme.textSecondary} />
                         </TouchableOpacity>
-                    ))}
-                </ScrollView>
+                    </InputGroup>
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="Password"
-                    placeholderTextColor="#7f8c8d"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                    autoComplete="off"
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                    textContentType="password"
-                />
+                    <InputGroup label="Confirm Password" icon="checkmark-circle-outline" theme={theme} styles={styles}>
+                        <TextInput style={styles.input} placeholder="••••••••" placeholderTextColor={theme.textSecondary} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showPassword} />
+                    </InputGroup>
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="Confirm Password"
-                    placeholderTextColor="#7f8c8d"
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    secureTextEntry
-                    autoComplete="off"
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                    textContentType="password"
-                />
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>BASE NEIGHBORHOOD</Text>
+                        <View style={styles.searchWrapper}>
+                            <Ionicons name="search-outline" size={18} color={theme.textSecondary} style={{ marginLeft: 12 }} />
+                            <TextInput style={styles.searchInput} placeholder="Filter Ankara neighborhoods..." placeholderTextColor={theme.textSecondary} value={baseLocationSearch} onChangeText={setBaseLocationSearch} />
+                        </View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 4 }}>
+                            {filteredNeighborhoods.map((item) => (
+                                <TouchableOpacity
+                                    key={item.id}
+                                    style={[styles.chip, baseLocation === item.label && styles.chipActive]}
+                                    onPress={() => setBaseLocation(item.label)}
+                                >
+                                    <Text style={[styles.chipText, baseLocation === item.label && styles.chipTextActive]}>
+                                        {item.label.split(',')[0]}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
 
-                <TouchableOpacity style={styles.button} onPress={handleRegister}>
-                    <Text style={styles.buttonText}>Sign Up</Text>
-                </TouchableOpacity>
+                    <TouchableOpacity style={styles.registerBtn} onPress={handleRegister} activeOpacity={0.8}>
+                        <Text style={styles.registerBtnText}>Create My Profile</Text>
+                    </TouchableOpacity>
+                </View>
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Already have an account? </Text>
-                    <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.linkTouchTarget}>
-                        <Text style={styles.linkText}>Log In</Text>
+                    <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
+                        <Text style={styles.loginText}>Sign In</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -172,80 +141,53 @@ export default function RegisterScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#15202B',
-    },
-    scrollContent: {
-        flexGrow: 1,
+function InputGroup({ label, icon, theme, styles, children }: { label: string; icon: string; theme: ThemeColors; styles: any; children: React.ReactNode }) {
+    return (
+        <View style={styles.inputGroup}>
+            <Text style={styles.label}>{label.toUpperCase()}</Text>
+            <View style={styles.inputWrapper}>
+                <Ionicons name={icon as any} size={20} color={theme.textSecondary} style={{ marginRight: 10 }} />
+                {children}
+            </View>
+        </View>
+    );
+}
+
+const createStyles = (theme: ThemeColors) => StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.background },
+    scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 60, paddingBottom: 40 },
+    header: { marginBottom: 32 },
+    title: { fontSize: 32, fontWeight: '900', color: theme.textPrimary, marginBottom: 8 },
+    subtitle: { fontSize: 15, color: theme.textSecondary, lineHeight: 22 },
+    form: { width: '100%' },
+    inputGroup: { marginBottom: 20 },
+    row: { flexDirection: 'row' },
+    label: { color: theme.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, marginLeft: 4, letterSpacing: 0.8 },
+    inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.inputBg, borderRadius: 16, paddingHorizontal: 16, height: 56, borderWidth: 1, borderColor: theme.inputBorder },
+    searchWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.inputBg, borderRadius: 12, height: 44, marginBottom: 12, borderWidth: 1, borderColor: theme.inputBorder },
+    searchInput: { flex: 1, color: theme.textPrimary, fontSize: 14, paddingHorizontal: 10 },
+    input: { flex: 1, color: theme.textPrimary, fontSize: 15 },
+    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: theme.inputBg, marginRight: 8, borderWidth: 1, borderColor: theme.inputBorder },
+    chipActive: { backgroundColor: theme.primary, borderColor: theme.primary },
+    chipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
+    chipTextActive: { color: '#FFF' },
+    registerBtn: { backgroundColor: theme.primary, height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 20, shadowColor: theme.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 },
+    registerBtnText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
+    footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 40 },
+    footerText: { color: theme.textSecondary, fontSize: 14 },
+    loginText: { color: theme.primary, fontSize: 14, fontWeight: '700' },
+    backBtn: {
+        position: 'absolute',
+        top: 10,
+        left: 0,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: theme.card,
         justifyContent: 'center',
-        paddingHorizontal: 24,
-        paddingVertical: 40,
-    },
-    logoContainer: {
         alignItems: 'center',
-        marginBottom: 32,
-    },
-    logoText: {
-        fontSize: 32,
-        fontWeight: '900',
-        color: '#F8FAFC',
-        letterSpacing: -0.5,
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: '#FFFFFF',
-        marginBottom: 8,
-    },
-    subtitle: {
-        fontSize: 16,
-        color: '#94A3B8',
-        marginBottom: 32,
-    },
-    input: {
-        backgroundColor: '#1C2733',
-        color: '#FFFFFF',
-        height: 52,
-        borderRadius: 8,
-        paddingHorizontal: 16,
-        marginBottom: 16,
-        fontSize: 16,
+        zIndex: 10,
         borderWidth: 1,
-        borderColor: '#334155',
+        borderColor: theme.cardBorder,
     },
-    button: {
-        backgroundColor: '#3B82F6',
-        height: 52,
-        borderRadius: 8,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginTop: 8,
-    },
-    buttonText: {
-        color: '#FFFFFF',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    footer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginTop: 24,
-    },
-    footerText: {
-        color: '#94A3B8',
-        fontSize: 14,
-    },
-    linkTouchTarget: {
-        minHeight: 44, // Ensuring minimum touch target of 44px
-        justifyContent: 'center',
-        paddingHorizontal: 8,
-    },
-    linkText: {
-        color: '#3B82F6',
-        fontSize: 14,
-        fontWeight: 'bold',
-    }
 });

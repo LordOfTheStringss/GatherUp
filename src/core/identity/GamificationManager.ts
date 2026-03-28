@@ -5,10 +5,18 @@ import { BadgeEnum, User } from './User';
  * Controls reputation mechanics between users after social interactions.
  */
 export class GamificationManager {
+    private static instance: GamificationManager;
     private supabaseClient: any;
 
-    constructor() {
+    private constructor() {
         this.supabaseClient = SupabaseClient.getInstance();
+    }
+
+    public static getInstance(): GamificationManager {
+        if (!GamificationManager.instance) {
+            GamificationManager.instance = new GamificationManager();
+        }
+        return GamificationManager.instance;
     }
 
     public async calculateAndAwardBadges(userId: string): Promise<string[]> {

@@ -33,7 +33,7 @@ export const PanicButton = () => {
                 const Location = await import('expo-location');
                 const { status } = await Location.requestForegroundPermissionsAsync();
                 if (status === 'granted') {
-                    const loc = await Location.getCurrentPositionAsync({});
+                    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
                     locationStr = `${loc.coords.latitude}, ${loc.coords.longitude}`;
                 }
             } catch (e) {

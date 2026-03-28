@@ -11,6 +11,7 @@ export interface UpdateProfileDTO {
     interests?: string[];
     profilePhoto?: string;
     baseLocation?: string;
+    currentStatus?: 'available' | 'busy' | 'away';
 }
 
 export interface PublicProfileDTO {
@@ -43,12 +44,10 @@ export class UserController {
     // Attributes
     private userManager: UserManager;
     private friendshipManager: FriendshipManager;
-    private gamificationManager: GamificationManager;
 
-    constructor(userManager: UserManager, friendshipManager: FriendshipManager, gamificationManager: GamificationManager) {
+    constructor(userManager: UserManager, friendshipManager: FriendshipManager) {
         this.userManager = userManager;
         this.friendshipManager = friendshipManager;
-        this.gamificationManager = gamificationManager;
     }
 
     /**
@@ -75,9 +74,7 @@ export class UserController {
             // Sync and award badges gracefully, do not let it fail the profile fetch
             let updatedBadges: string[] = user.badges || [];
             try {
-                if (this.gamificationManager) {
-                    updatedBadges = await this.gamificationManager.calculateAndAwardBadges(effectiveId);
-                }
+                updatedBadges = await GamificationManager.getInstance().calculateAndAwardBadges(effectiveId);
             } catch (err) {
                 console.error("Gamification fail:", err);
             }
@@ -97,7 +94,8 @@ export class UserController {
                         eventsAttended: eventsAttended || 0,
                         eventsHosted: eventsHosted || 0,
                         trustedCircleCount: friends ? friends.length : 0
-                    }
+                    },
+                    currentStatus: user.current_status || 'available'
                 }
             };
         } catch (error: any) {
@@ -125,7 +123,8 @@ export class UserController {
                 bio: data.bio,
                 interests: data.interests,
                 profilePhoto: data.profilePhoto,
-                baseLocation: data.baseLocation
+                baseLocation: data.baseLocation,
+                currentStatus: data.currentStatus
             });
             return { status: 200, message: "Profile Updated" };
         } catch (error: any) {
