@@ -4,6 +4,7 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { Calendar, LocaleConfig } from "react-native-calendars"; // TAKVİM GERİ GELDİ!
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthManager } from "../../src/core/identity/AuthManager";
@@ -120,12 +122,8 @@ export default function ProfileScreen() {
   const [badges, setBadges] = useState<string[]>([]);
   const [baseLocation, setBaseLocation] = useState<string | null>(null);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Event History Modal
-  const [eventHistoryVisible, setEventHistoryVisible] = useState(false);
-  const [eventHistoryType, setEventHistoryType] = useState<'hosted' | 'attended'>('hosted');
-  const [eventHistoryData, setEventHistoryData] = useState<any[]>([]);
 
   // TAKVİM İÇİN SEÇİLİ GÜN STATE'İ
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -148,14 +146,13 @@ export default function ProfileScreen() {
             }
           }
 
-          const userController = new UserController(
-            UserManager.getInstance(),
-            new FriendshipManager({} as any)
-          );
+          const userController = new UserController();
           const res = await userController.getMyProfile();
 
           if (res.status === 200 && res.data) {
+            console.log("Profile Screen: Received profile image URI:", res.data.profileImage);
             setUsername(res.data.fullName || null);
+            setProfileImage(res.data.profileImage || null);
             setInterests(res.data.interests || []);
             setBadges(res.data.badges || []);
             setBaseLocation(res.data.baseLocation || "Not Set");
@@ -230,7 +227,7 @@ export default function ProfileScreen() {
         await import("../../src/core/identity/FriendshipManager");
       const sessionData = await AuthManager.getInstance().getCurrentUser();
       if (!sessionData) throw new Error("Not auth");
-      const fm = new FriendshipManager({} as any);
+      const fm = FriendshipManager.getInstance();
       const circle = await fm.getTrustedCircle(sessionData.id);
       const requests = await fm.getPendingRequests(sessionData.id);
       setFriends(circle);
@@ -243,44 +240,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const loadEventHistory = async (type: 'hosted' | 'attended') => {
-    try {
-      setGlobalLoading(true);
-      setEventHistoryType(type);
-      const { AuthManager } = await import("../../src/core/identity/AuthManager");
-      const { SupabaseClient } = await import("../../src/infra/SupabaseClient");
-      const user = await AuthManager.getInstance().getCurrentUser();
-      if (!user) throw new Error("Not auth");
-      const sb = SupabaseClient.getInstance().client;
 
-      let events: any[] = [];
-
-      if (type === 'hosted') {
-        const { data, error } = await sb
-          .from('events')
-          .select('*')
-          .eq('organizer_id', user.id)
-          .order('start_time', { ascending: false })
-          .limit(50);
-        if (error) throw error;
-        events = data || [];
-      } else {
-        const { data } = await sb
-          .from('event_participants')
-          .select('event_id, events(*, users!events_organizer_id_fkey(full_name))')
-          .eq('user_id', user.id);
-        
-        events = (data || []).map((p: any) => p.events).filter(Boolean);
-      }
-
-      setEventHistoryData(events);
-      setEventHistoryVisible(true);
-    } catch (e: any) {
-      showToast(e.message || 'Failed to load events', 'error');
-    } finally {
-      setGlobalLoading(false);
-    }
-  };
 
   const handleSendRequest = async () => {
     if (!newFriendUsername.trim()) return;
@@ -319,7 +279,7 @@ export default function ProfileScreen() {
       const { FriendshipManager } =
         await import("../../src/core/identity/FriendshipManager");
       const session = await AuthManager.getInstance().getCurrentUser();
-      const fm = new FriendshipManager({} as any);
+      const fm = FriendshipManager.getInstance();
       await fm.acceptRequest(session.id, friendId);
       showToast("Request accepted!", "success");
       loadFriends();
@@ -335,7 +295,7 @@ export default function ProfileScreen() {
       const { FriendshipManager } =
         await import("../../src/core/identity/FriendshipManager");
       const session = await AuthManager.getInstance().getCurrentUser();
-      const fm = new FriendshipManager({} as any);
+      const fm = FriendshipManager.getInstance();
       await fm.rejectRequest(session.id, friendId);
       showToast("Request rejected!", "success");
       loadFriends();
@@ -419,9 +379,20 @@ export default function ProfileScreen() {
         {/* Header Section */}
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>
-              {userEmail ? userEmail.charAt(0).toUpperCase() : "U"}
-            </Text>
+            {profileImage ? (
+              <ExpoImage 
+                source={{ uri: profileImage }} 
+                style={styles.avatarImage} 
+                contentFit="cover"
+                transition={500}
+                onLoad={() => console.log("Profile Screen: Image loaded successfully")}
+                onError={(e) => console.error("Profile Screen: Image load failed", e.error)}
+              />
+            ) : (
+              <Text style={styles.avatarText}>
+                {userEmail ? userEmail.charAt(0).toUpperCase() : "U"}
+              </Text>
+            )}
             <View style={styles.badgeIcon}>
               <Ionicons name="checkmark-circle" size={24} color="#10B981" />
             </View>
@@ -437,12 +408,18 @@ export default function ProfileScreen() {
 
         {/* Stats Section */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity style={styles.statBox} onPress={() => loadEventHistory('attended')}>
+          <TouchableOpacity 
+            style={styles.statBox} 
+            onPress={() => router.push({ pathname: '/event-history/[type]', params: { type: 'attended' } })}
+          >
             <Text style={styles.statValue}>{stats.eventsAttended}</Text>
             <Text style={[styles.statLabel, { color: theme.primary }]}>Attended</Text>
           </TouchableOpacity>
           <View style={styles.statBorder} />
-          <TouchableOpacity style={styles.statBox} onPress={() => loadEventHistory('hosted')}>
+          <TouchableOpacity 
+            style={styles.statBox} 
+            onPress={() => router.push({ pathname: '/event-history/[type]', params: { type: 'hosted' } })}
+          >
             <Text style={styles.statValue}>{stats.eventsHosted}</Text>
             <Text style={[styles.statLabel, { color: theme.primary }]}>Hosted</Text>
           </TouchableOpacity>
@@ -474,10 +451,7 @@ export default function ProfileScreen() {
               const newStatus = !isAvailable;
               setIsAvailable(newStatus);
               try {
-                const { UserController } = await import("../../src/controllers/UserController");
-                const { UserManager } = await import("../../src/core/identity/UserManager");
-                const { FriendshipManager } = await import("../../src/core/identity/FriendshipManager");
-                const controller = new UserController(UserManager.getInstance(), new FriendshipManager({} as any));
+                const controller = new UserController();
                 await controller.updateProfile(undefined, { currentStatus: newStatus ? 'available' : 'busy' });
               } catch (e) {
                 console.error("Failed to update status:", e);
@@ -801,63 +775,7 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
-      {/* Event History Modal */}
-      {eventHistoryVisible && (
-        <View style={StyleSheet.absoluteFillObject}>
-          <TouchableOpacity
-            activeOpacity={1}
-            style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)" }}
-            onPress={() => setEventHistoryVisible(false)}
-          />
-          <View style={[styles.modalContent, { maxHeight: '70%' }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {eventHistoryType === 'hosted' ? '🎤 Events You Hosted' : '🎫 Events You Attended'}
-              </Text>
-              <TouchableOpacity onPress={() => setEventHistoryVisible(false)}>
-                <Ionicons name="close" size={24} color={theme.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={{ maxHeight: 400 }}>
-              {eventHistoryData.length === 0 ? (
-                <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingVertical: 40, fontSize: 15 }}>
-                  No events yet.
-                </Text>
-              ) : (
-                eventHistoryData.map((event: any, idx: number) => (
-                  <TouchableOpacity
-                    key={event.id || idx}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      paddingVertical: 14,
-                      paddingHorizontal: 16,
-                      borderBottomWidth: idx < eventHistoryData.length - 1 ? 1 : 0,
-                      borderBottomColor: theme.cardBorder,
-                    }}
-                    onPress={() => {
-                      setEventHistoryVisible(false);
-                      router.push(`/event/${event.id}`);
-                    }}
-                  >
-                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: theme.primaryLight, justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
-                      <Ionicons name={eventHistoryType === 'hosted' ? "mic" : "ticket"} size={20} color={theme.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.textPrimary, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>{event.title}</Text>
-                      <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>
-                        {event.start_time ? new Date(event.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD'}
-                        {event.sub_category ? ` · ${event.sub_category}` : ''}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      )}
+
 
       {/* Friends Modal */}
       {friendsModalVisible && (
@@ -1018,6 +936,11 @@ const createStyles = (theme: ThemeColors) =>
       justifyContent: "center",
       alignItems: "center",
       marginBottom: 16,
+    },
+    avatarImage: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
     },
     avatarText: { fontSize: 40, fontWeight: "800", color: "#FFF" },
     badgeIcon: {

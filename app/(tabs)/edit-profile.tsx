@@ -3,7 +3,6 @@ import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-    Image,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -12,6 +11,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useAuthStore } from "../../src/store/authStore";
 import { useUIStore } from "../../src/store/uiStore";
 import { useTheme } from "../../src/theme/useTheme";
@@ -36,15 +36,13 @@ export default function EditProfileScreen() {
           await import("../../src/controllers/UserController");
         const { UserManager } =
           await import("../../src/core/identity/UserManager");
-        const controller = new UserController(
-          UserManager.getInstance(),
-          {} as any
-        );
+        const controller = new UserController();
         const res = await controller.getMyProfile();
         if (res.status === 200 && res.data) {
           setName(res.data.fullName || "");
           setBio(res.data.bio || "");
           setBaseLoc(res.data.baseLocation || "");
+          setProfilePic(res.data.profileImage || null);
         }
       } catch (e) {
         console.error("Failed to load profile:", e);
@@ -81,17 +79,24 @@ export default function EditProfileScreen() {
       await import("../../src/controllers/UserController");
     const { UserManager } = await import("../../src/core/identity/UserManager");
 
-    const userController = new UserController(
-      UserManager.getInstance(),
-      {} as any // FriendshipManager (stub for now if not needed)
-    );
+    const userController = new UserController();
 
     setGlobalLoading(true);
     try {
+      let finalProfilePic = profilePic;
+      if (profilePic && (profilePic.startsWith('file://') || profilePic.startsWith('content://'))) {
+        const { AuthManager } = await import("../../src/core/identity/AuthManager");
+        const userSession = await AuthManager.getInstance().getCurrentUser();
+        if (userSession) {
+          finalProfilePic = await UserManager.getInstance().uploadAvatar(userSession.id, profilePic);
+        }
+      }
+
       await userController.updateProfile(undefined, {
         name: name,
         bio: bio,
         baseLocation: baseLoc,
+        profilePhoto: finalProfilePic || undefined,
       });
       setGlobalLoading(false);
       showToast("Profile details saved.", "success");
@@ -124,7 +129,12 @@ export default function EditProfileScreen() {
             activeOpacity={0.8}
           >
             {profilePic ? (
-              <Image source={{ uri: profilePic }} style={styles.profileImage} />
+              <ExpoImage 
+                source={{ uri: profilePic }} 
+                style={styles.profileImage} 
+                contentFit="cover"
+                transition={200}
+              />
             ) : (
               <View style={styles.placeholderImage}>
                 <Text style={styles.placeholderText}>

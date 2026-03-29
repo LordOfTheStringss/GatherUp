@@ -104,10 +104,7 @@ export default function InterestsScreen() {
         await import("../../src/controllers/UserController");
       const { UserManager } =
         await import("../../src/core/identity/UserManager");
-      const controller = new UserController(
-        UserManager.getInstance(),
-        {} as any
-      );
+      const controller = new UserController();
 
       await controller.updateProfile(undefined, {
         interests: selectedInterests,

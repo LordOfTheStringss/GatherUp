@@ -2,12 +2,20 @@ import { NotificationService } from '../../infra/NotificationService';
 import { SupabaseClient } from '../../infra/SupabaseClient';
 
 export class FriendshipManager {
+    private static instance: FriendshipManager;
     private supabaseClient: any;
     private notificationService: NotificationService;
 
-    constructor(notificationService: NotificationService) {
+    private constructor() {
         this.supabaseClient = SupabaseClient.getInstance();
-        this.notificationService = notificationService;
+        this.notificationService = NotificationService.getInstance();
+    }
+
+    public static getInstance(): FriendshipManager {
+        if (!FriendshipManager.instance) {
+            FriendshipManager.instance = new FriendshipManager();
+        }
+        return FriendshipManager.instance;
     }
 
     public async sendRequest(from: string, to: string): Promise<void> {
@@ -66,10 +74,10 @@ export class FriendshipManager {
 
         if (e2) throw new Error(e2.message);
 
-        const myFollowingIds = whoIFollow.map((f: any) => f.friend_id);
+        const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
 
-        const pending = (whoFollowsMe || []).filter((req: any) => !myFollowingIds.includes(req.user_id));
-        return pending.map((p: any) => p.users);
+        const pending = (whoFollowsMe || []).filter((req: any) => req.user_id && !myFollowingIds.includes(req.user_id));
+        return pending.map((p: any) => p.users).filter(Boolean);
     }
 
     public async getTrustedCircle(userId: string): Promise<any[]> {
@@ -88,9 +96,9 @@ export class FriendshipManager {
 
         if (e2) throw new Error(e2.message);
 
-        const myFollowingIds = whoIFollow.map((f: any) => f.friend_id);
+        const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
 
-        const friends = (whoFollowsMe || []).filter((req: any) => myFollowingIds.includes(req.user_id));
-        return friends.map((p: any) => p.users);
+        const friends = (whoFollowsMe || []).filter((req: any) => req.user_id && myFollowingIds.includes(req.user_id));
+        return friends.map((p: any) => p.users).filter(Boolean);
     }
 }

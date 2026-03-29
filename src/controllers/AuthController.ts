@@ -39,7 +39,7 @@ export class AuthController {
      */
     public async register(request: RegisterDTO): Promise<ResponseEntity> {
         try {
-            await this.authManager.register({
+            const result = await this.authManager.register({
                 email: request.email,
                 password: request.password || '',
                 fullName: request.fullName,
@@ -47,7 +47,7 @@ export class AuthController {
                 age: request.age,
                 baseLocation: request.baseLocation
             });
-            return { status: 201, message: "User Created" };
+            return { status: 201, message: "User Created", data: result.userId };
         } catch (error: any) {
             // Re-throw the error so that the Store/UI can handle specific Exception types
             throw error;

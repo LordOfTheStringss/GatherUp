@@ -24,7 +24,7 @@ export class AuthManager {
         return AuthManager.instance;
     }
 
-    public async register(data: { email: string, password: string, fullName: string, username: string, age: string, baseLocation?: string }): Promise<boolean> {
+    public async register(data: { email: string, password: string, fullName: string, username: string, age: string, baseLocation?: string }): Promise<{ success: boolean; userId?: string }> {
         const email = data.email.trim();
         const password = data.password.trim();
         const username = data.username.trim();
@@ -91,7 +91,7 @@ export class AuthManager {
                 .catch((e: any) => console.error("Initial embedding generation failed:", e));
         }
 
-        return true;
+        return { success: true, userId: authData.user?.id };
     }
 
     public async login(identifier: string, pass: string): Promise<any> {

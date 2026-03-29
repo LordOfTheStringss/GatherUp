@@ -7,6 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { ANKARA_NEIGHBORHOODS } from '../../src/data/locations';
 import { ThemeColors } from '../../src/theme/colors';
 import { useTheme } from '../../src/theme/useTheme';
+import * as ImagePicker from 'expo-image-picker';
+import { Image as ExpoImage } from 'expo-image';
+import { UserManager } from '../../src/core/identity/UserManager';
 
 export default function RegisterScreen() {
     const [fullName, setFullName] = useState('');
@@ -18,18 +21,37 @@ export default function RegisterScreen() {
     const [baseLocation, setBaseLocation] = useState('');
     const [baseLocationSearch, setBaseLocationSearch] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [profilePic, setProfilePic] = useState<string | null>(null);
 
     const { register } = useAuthStore();
     const { showToast } = useUIStore();
     const theme = useTheme();
     const styles = createStyles(theme);
-
     const filteredNeighborhoods = useMemo(() => {
         if (!baseLocationSearch) return ANKARA_NEIGHBORHOODS;
         return ANKARA_NEIGHBORHOODS.filter(n =>
             n.label.toLowerCase().includes(baseLocationSearch.toLowerCase())
         );
     }, [baseLocationSearch]);
+
+    const pickImage = async () => {
+        const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!granted) {
+            showToast('Permission to access gallery is required.', 'error');
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+        });
+
+        if (!result.canceled) {
+            setProfilePic(result.assets[0].uri);
+        }
+    };
 
     const handleRegister = async () => {
         if (!fullName || !username || !age || !email || !password || !confirmPassword || !baseLocation) {
@@ -41,8 +63,18 @@ export default function RegisterScreen() {
             return;
         }
         try {
-            const success = await register({ fullName, username, age, email, password, baseLocation });
-            if (success) {
+            const userId = await register({ fullName, username, age, email, password, baseLocation });
+            if (userId) {
+                // If a profile picture was selected, upload it
+                if (profilePic) {
+                    try {
+                        console.log("Register: Uploading profile photo for new user", userId);
+                        await UserManager.getInstance().uploadAvatar(userId, profilePic);
+                    } catch (uploadError) {
+                        console.error("Register: Photo upload failed", uploadError);
+                        showToast('Profile created, but photo upload failed. You can add it later.', 'info');
+                    }
+                }
                 showToast('Registration successful! Verify your email.', 'success');
                 router.push('/(auth)/interests');
             } else {
@@ -67,6 +99,23 @@ export default function RegisterScreen() {
                 <View style={styles.header}>
                     <Text style={styles.title}>Join GatherUp</Text>
                     <Text style={styles.subtitle}>Create your profile to start meeting</Text>
+                </View>
+
+                {/* Avatar Picker Logic */}
+                <View style={styles.avatarSection}>
+                    <TouchableOpacity style={styles.avatarWrapper} onPress={pickImage} activeOpacity={0.8}>
+                        {profilePic ? (
+                            <ExpoImage source={{ uri: profilePic }} style={styles.avatarImage} />
+                        ) : (
+                            <View style={styles.avatarPlaceholder}>
+                                <Ionicons name="camera-outline" size={32} color={theme.textSecondary} />
+                                <Text style={styles.avatarPlaceholderText}>Add Photo</Text>
+                            </View>
+                        )}
+                        <View style={styles.avatarAddBadge}>
+                            <Ionicons name="add" size={20} color="#FFF" />
+                        </View>
+                    </TouchableOpacity>
                 </View>
 
                 <View style={styles.form}>
@@ -189,5 +238,48 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
         zIndex: 10,
         borderWidth: 1,
         borderColor: theme.cardBorder,
+    },
+    avatarSection: {
+        alignItems: 'center',
+        marginBottom: 32,
+    },
+    avatarWrapper: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: theme.inputBg,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: theme.primary,
+        borderStyle: 'dashed',
+        position: 'relative',
+    },
+    avatarImage: {
+        width: 116,
+        height: 116,
+        borderRadius: 58,
+    },
+    avatarPlaceholder: {
+        alignItems: 'center',
+    },
+    avatarPlaceholderText: {
+        fontSize: 12,
+        color: theme.textSecondary,
+        fontWeight: '600',
+        marginTop: 4,
+    },
+    avatarAddBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        backgroundColor: theme.primary,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 3,
+        borderColor: theme.background,
     },
 });
