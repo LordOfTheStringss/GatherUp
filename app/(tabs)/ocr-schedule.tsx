@@ -59,11 +59,15 @@ export default function OCRScheduleScreen() {
   const theme = useTheme();
   const styles = createStyles(theme);
 
-  const { date, day } = useLocalSearchParams();
+  const { date, day, resetFlow, isUpdating } = useLocalSearchParams();
 
-  const [step, setStep] = useState<"type_select" | "calendar_view">(
-    "calendar_view",
-  );
+  const [step, setStep] = useState<"type_select" | "upload" | "manual_time" | "calendar_view">("calendar_view");
+
+  React.useEffect(() => {
+    if (resetFlow === "1") {
+      setStep("type_select");
+    }
+  }, [resetFlow]);
   const [schedule, setSchedule] = useState<TimeSlot[]>([]);
   const [activeTab, setActiveTab] = useState<number>(
     day ? parseInt(day as string) : 1
@@ -109,6 +113,11 @@ export default function OCRScheduleScreen() {
           
           if (user) {
             setUserId(user.id);
+          }
+
+          if (resetFlow === "1") {
+            setSchedule([]);
+            return;
           }
 
           const res = await scheduleController.getMySchedule(
@@ -169,8 +178,8 @@ export default function OCRScheduleScreen() {
   };
 
   const getSlotForHour = (hourInt: number) => {
-    return schedule.find((s: any) => {
-      if (!s.startTime) return false;
+    return schedule?.find((s: any) => {
+      if (!s || !s.startTime || !s.endTime) return false;
       const st = new Date(s.startTime);
       const et = new Date(s.endTime);
 
@@ -222,7 +231,7 @@ export default function OCRScheduleScreen() {
           et,
           BlockType.BUSY,
           DataSource.OCR,
-          false,
+          true,
           {
             title: slot.metadata?.title || "Class",
             type: "Class",
@@ -274,6 +283,7 @@ export default function OCRScheduleScreen() {
         title: newEntry.title,
         type: newEntry.category.label,
         color: newEntry.category.color,
+        icon: newEntry.category.icon,
       },
     );
 
@@ -295,8 +305,13 @@ export default function OCRScheduleScreen() {
     setGlobalLoading(true);
     try {
       await scheduleController.confirmSchedule(schedule, userId);
-      showToast("All changes saved!", "success");
-      router.replace("/profile");
+      showToast("Schedule successfully synced to cloud", "success");
+      
+      if (isUpdating === "1") {
+        router.navigate("/(tabs)/profile");
+      } else {
+        router.navigate("/(tabs)");
+      }
     } catch (error) {
       showToast("Failed to save.", "error");
     } finally {
@@ -336,96 +351,146 @@ export default function OCRScheduleScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={{
-              height: 1,
-              backgroundColor: theme.cardBorder,
-              marginVertical: 20,
-            }}
-          />
-
-          <View>
-            <View style={styles.timeInputContainer}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Start</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.timePickerBtn,
-                    showStartPicker && { borderColor: theme.primary },
-                  ]}
-                  onPress={() => {
-                    setShowStartPicker(true);
-                    setShowEndPicker(false);
-                  }}
-                >
-                  <Text style={styles.timePickerText}>
-                    {workStart.toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.dashText}>-</Text>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>End</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.timePickerBtn,
-                    showEndPicker && { borderColor: theme.primary },
-                  ]}
-                  onPress={() => {
-                    setShowEndPicker(true);
-                    setShowStartPicker(false);
-                  }}
-                >
-                  <Text style={styles.timePickerText}>
-                    {workEnd.toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+          <TouchableOpacity
+            style={styles.typeButton}
+            onPress={() => setStep("manual_time")}
+          >
+            <View style={styles.typeIconContainer}>
+              <Text style={{ fontSize: 24 }}>💼</Text>
             </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.typeTitle}>I am Working</Text>
+              <Text style={styles.typeDesc}>Set your working hours.</Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={24}
+              color={theme.textSecondary}
+            />
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
-            {(showStartPicker || showEndPicker) && (
-              <View style={styles.pickerContainer}>
-                <View style={styles.pickerHeader}>
+  if (step === "upload" || step === "manual_time") {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => setStep("type_select")}
+            style={styles.backBtn}
+          >
+            <Ionicons name="arrow-back" size={28} color={theme.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>
+            {step === "upload" ? "Plan Schedule" : "Working Hours"}
+          </Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.subtitle}>
+            {step === "upload"
+              ? "Upload your schedule, let AI handle it."
+              : "Enter your working hours to build your calendar."}
+          </Text>
+
+          {step === "upload" ? (
+            <TouchableOpacity style={styles.uploadBox} onPress={handleUpload}>
+              <Ionicons
+                name="camera"
+                size={48}
+                color={theme.primary}
+                style={{ marginBottom: 10 }}
+              />
+              <Text style={styles.uploadText}>Open Camera / Gallery</Text>
+            </TouchableOpacity>
+          ) : (
+            <View>
+              <View style={styles.timeInputContainer}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Start</Text>
                   <TouchableOpacity
+                    style={[
+                      styles.timePickerBtn,
+                      showStartPicker && { borderColor: theme.primary },
+                    ]}
                     onPress={() => {
-                      setShowStartPicker(false);
+                      setShowStartPicker(true);
                       setShowEndPicker(false);
                     }}
                   >
-                    <Text style={styles.pickerCloseText}>Done</Text>
+                    <Text style={styles.timePickerText}>
+                      {workStart.toLocaleTimeString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })}
+                    </Text>
                   </TouchableOpacity>
                 </View>
-                <DateTimePicker
-                  value={showStartPicker ? workStart : workEnd}
-                  mode="time"
-                  is24Hour={true}
-                  display="spinner"
-                  onChange={(event, date) => {
-                    if (Platform.OS === "android") {
+                <Text style={styles.dashText}>-</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>End</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.timePickerBtn,
+                      showEndPicker && { borderColor: theme.primary },
+                    ]}
+                    onPress={() => {
+                      setShowEndPicker(true);
                       setShowStartPicker(false);
-                      setShowEndPicker(false);
-                    }
-                    if (date) {
-                      if (showStartPicker) setWorkStart(date);
-                      if (showEndPicker) setWorkEnd(date);
-                    }
-                  }}
-                />
+                    }}
+                  >
+                    <Text style={styles.timePickerText}>
+                      {workEnd.toLocaleTimeString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            )}
-          </View>
 
-          <TouchableOpacity style={styles.button} onPress={applyManualHours}>
-            <Text style={styles.buttonText}>Add to Weekdays</Text>
-          </TouchableOpacity>
+              {(showStartPicker || showEndPicker) && (
+                <View style={styles.pickerContainer}>
+                  <View style={styles.pickerHeader}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setShowStartPicker(false);
+                        setShowEndPicker(false);
+                      }}
+                    >
+                      <Text style={styles.pickerCloseText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    value={showStartPicker ? workStart : workEnd}
+                    mode="time"
+                    is24Hour={true}
+                    display="spinner"
+                    onChange={(event, date) => {
+                      if (Platform.OS === "android") {
+                        setShowStartPicker(false);
+                        setShowEndPicker(false);
+                      }
+                      if (date) {
+                        if (showStartPicker) setWorkStart(date);
+                        if (showEndPicker) setWorkEnd(date);
+                      }
+                    }}
+                  />
+                </View>
+              )}
+            </View>
+          )}
+
+          {step === "manual_time" && (
+            <TouchableOpacity style={styles.button} onPress={applyManualHours}>
+              <Text style={styles.buttonText}>Add to Weekdays</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </SafeAreaView>
     );
@@ -435,13 +500,17 @@ export default function OCRScheduleScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => setStep("type_select")}
-          style={styles.backBtn}
+          onPress={() => {
+            setSchedule([]);
+            setStep("type_select");
+          }}
+          style={{ flexDirection: "row", alignItems: "center" }}
         >
-          <Ionicons name="camera-outline" size={28} color={theme.textPrimary} />
+          <Ionicons name="refresh-outline" size={24} color={theme.primary} />
+          <Text style={{ color: theme.primary, marginLeft: 4, fontWeight: "600", fontSize: 14 }}>Reset</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Weekly Schedule</Text>
-        <TouchableOpacity onPress={() => router.replace("/profile")}>
+        <Text style={styles.headerTitle}>Edit Schedule</Text>
+        <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="close" size={28} color={theme.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -503,7 +572,7 @@ export default function OCRScheduleScreen() {
                     onPress={() => handleSlotPress(slot)}
                   >
                     <Ionicons
-                      name="bookmark"
+                      name={(slot.metadata?.icon as any) || "calendar-outline"}
                       size={20}
                       color="#FFF"
                       style={{ marginRight: 10 }}
@@ -516,7 +585,7 @@ export default function OCRScheduleScreen() {
                       </Text>
                       {!isAvailable && (
                         <Text style={styles.cardTitle} numberOfLines={1}>
-                          {slot.metadata?.title}
+                          {slot.metadata?.title || "Meşgul"}
                         </Text>
                       )}
                     </View>
@@ -752,6 +821,19 @@ const createStyles = (theme: ThemeColors) =>
     },
     typeTitle: { color: theme.textPrimary, fontSize: 16, fontWeight: "bold" },
     typeDesc: { color: theme.textSecondary, fontSize: 13 },
+    subtitle: { fontSize: 15, color: theme.textSecondary, marginBottom: 20 },
+    uploadBox: {
+      height: 200,
+      backgroundColor: theme.card,
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: theme.primary,
+      borderStyle: "dashed",
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 20,
+    },
+    uploadText: { fontSize: 18, color: theme.primary, fontWeight: "bold" },
     title: {
       fontSize: 24,
       fontWeight: "bold",

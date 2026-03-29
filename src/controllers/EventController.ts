@@ -79,25 +79,30 @@ export class EventController {
                     endTime.setHours(endTime.getHours() + 2);
                 }
 
-                const sClient = SupabaseClient.getInstance().client;
-                
-                const { data: userJoinedEvents } = await sClient.from('event_participants').select('event_id').eq('user_id', user.id);
-                const joinedEventIds = userJoinedEvents?.map((e: any) => e.event_id) || [];
-                
-                const orCondition = `organizer_id.eq.${user.id}` + (joinedEventIds.length > 0 ? `,id.in.(${joinedEventIds.join(',')})` : '');
-                
-                const { data: userEvents } = await sClient.from('events').select('id, start_time, end_time, title').or(orCondition);
-                
-                if (userEvents) {
-                    for (const userEvent of userEvents) {
-                        if (!userEvent.start_time || !userEvent.end_time) continue;
-                        const existingStart = new Date(userEvent.start_time);
-                        const existingEnd = new Date(userEvent.end_time);
-                        
-                        if (eventDate < existingEnd && endTime > existingStart) {
-                            throw new Error(`Schedule Conflict: You already have an event ("${userEvent.title}") scheduled during this time.`);
+                try {
+                    const sClient = SupabaseClient.getInstance().client;
+                    
+                    const { data: userJoinedEvents } = await sClient.from('event_participants').select('event_id').eq('user_id', user?.id);
+                    const joinedEventIds = userJoinedEvents?.map((e: any) => e?.event_id) || [];
+                    
+                    const orCondition = `organizer_id.eq.${user?.id}` + (joinedEventIds.length > 0 ? `,id.in.(${joinedEventIds.join(',')})` : '');
+                    
+                    const { data: userEvents } = await sClient.from('events').select('id, start_time, end_time, title').or(orCondition);
+                    
+                    if (userEvents) {
+                        for (const userEvent of userEvents) {
+                            if (!userEvent?.start_time || !userEvent?.end_time) continue;
+                            const existingStart = new Date(userEvent.start_time);
+                            const existingEnd = new Date(userEvent.end_time);
+                            
+                            if (eventDate < existingEnd && endTime > existingStart) {
+                                throw new Error(`Schedule Conflict: You already have an event ("${userEvent?.title}") scheduled during this time.`);
+                            }
                         }
                     }
+                } catch (e: any) {
+                    if (e.message.includes("Schedule Conflict")) throw e;
+                    console.warn("Soft fail on schedule overlap check:", e);
                 }
                 // --- End overlap check ---
             }

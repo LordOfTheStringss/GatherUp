@@ -35,7 +35,7 @@ export class AuthManager {
             throw new AgeRestrictedException();
         }
 
-        if (!this.validateDomain(email)) {
+        if (!(await this.validateDomain(email))) {
             throw new InvalidDomainException();
         }
 
@@ -144,47 +144,28 @@ export class AuthManager {
         return user;
     }
 
-    public validateDomain(email: string): boolean {
+    public async validateDomain(email: string): Promise<boolean> {
         const lowerEmail = email.toLowerCase();
+        const parts = lowerEmail.split('@');
+        
+        if (parts.length !== 2) {
+            return false;
+        }
+        
+        const extractedDomain = parts[1];
 
-        // 1. Allow any student emails
-        if (lowerEmail.endsWith('.edu') || lowerEmail.endsWith('.edu.tr')) {
-            return true;
+        const { data, error } = await this.supabaseClient.client
+            .from('allowed_domains')
+            .select('domain')
+            .eq('domain', extractedDomain)
+            .single();
+
+        if (error || !data) {
+            console.warn(`Registration blocked: Domain ${extractedDomain} is not in allowed_domains table.`);
+            return false;
         }
 
-        // 2. Specific corporate whitelisted domains
-        const whitelistedDomains = [
-            // Savunma Sanayi ve Havacılık
-            '@aselsan.com.tr',
-            '@havelsan.com.tr',
-            '@roketsan.com.tr',
-            '@tusas.com',
-            '@tai.com.tr',
-            '@baykartech.com',
-            '@stm.com.tr',
-            '@tei.com.tr',
-            '@tubitak.gov.tr',
-            // Teknoloji, E-Ticaret ve Telekomünikasyon
-            '@trendyol.com',
-            '@hepsiburada.com',
-            '@getir.com',
-            '@turkcell.com.tr',
-            '@turktelekom.com.tr',
-            '@vodafone.com.tr',
-            '@logo.com.tr',
-            // Dev Holdingler ve Global Şirketler
-            '@thy.com',
-            '@koc.com.tr',
-            '@sabanci.com',
-            '@eczacibasi.com.tr',
-            // Finans ve Bankacılık
-            '@garantibbva.com.tr',
-            '@isbank.com.tr',
-            '@akbank.com',
-            '@yapikredi.com.tr'
-        ];
-
-        return whitelistedDomains.some(domain => lowerEmail.endsWith(domain));
+        return true;
     }
 
     public async logout(): Promise<void> {

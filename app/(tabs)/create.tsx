@@ -740,32 +740,35 @@ export default function CreateEventScreen() {
                 {myFriends.length === 0 ? (
                     <Text style={{ padding: 16, color: theme.textSecondary, textAlign: 'center' }}>You don't have any friends to include yet.</Text>
                 ) : (
-                    myFriends.map(friend => {
-                        const isSelected = selectedFriends.some((f: any) => f.id === friend.id);
-                        const isBusy = friend.current_status === 'busy';
-                        
+                    myFriends?.map(friend => {
+                        const isOnline = friend?.current_status === 'online';
+                        const isBusy = friend?.current_status === 'busy' || friend?.current_status === 'Class';
+                        const isSelected = selectedFriends.some(f => f?.id === friend?.id);
+                        const isAiSuggested = aiSuggestedFriends.some(f => f?.id === friend?.id);
+
                         return (
                             <TouchableOpacity
-                                key={friend.id}
+                                key={friend?.id || Math.random().toString()}
                                 style={[
-                                    styles.friendRow, 
-                                    isSelected && { backgroundColor: theme.primary + '10' },
-                                    isBusy && { opacity: 0.6 }
+                                    styles.friendRow,
+                                    isSelected && { backgroundColor: theme.primaryLight + '20' },
+                                    isAiSuggested && { borderColor: '#8B5CF6', borderWidth: 1 }
                                 ]}
-                                disabled={isBusy}
                                 onPress={() => {
                                     if (isSelected) {
-                                        setSelectedFriends(prev => prev.filter((f: any) => f.id !== friend.id));
+                                        setSelectedFriends(prev => prev.filter((f: any) => f?.id !== friend?.id));
                                     } else {
                                         setSelectedFriends(prev => [...prev, friend]);
                                     }
                                 }}
+                                activeOpacity={0.7}
+                                disabled={isBusy}
                             >
                                 <View style={[styles.friendAvatar, isBusy && { backgroundColor: theme.textSecondary }]}>
-                                    <Text style={styles.friendInitial}>{friend.full_name ? friend.full_name.charAt(0) : 'F'}</Text>
+                                    <Text style={styles.friendInitial}>{friend?.full_name ? friend.full_name.charAt(0) : 'F'}</Text>
                                 </View>
                                 <View style={styles.friendInfo}>
-                                    <Text style={[styles.mockFriendName, isBusy && { color: theme.textSecondary }]}>{friend.full_name}</Text>
+                                    <Text style={[styles.mockFriendName, isBusy && { color: theme.textSecondary }]}>{friend?.full_name}</Text>
                                     <Text style={isBusy ? styles.friendStatusBusy : (isSelected ? styles.friendStatusOnline : styles.friendStatusOffline)}>
                                         {isBusy ? 'Busy (Unavailable)' : (isSelected ? 'Included in Plan' : 'Tap to Include')}
                                     </Text>

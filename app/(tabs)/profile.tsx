@@ -201,8 +201,8 @@ export default function ProfileScreen() {
   );
 
   const getSlotForHour = (hourInt: number) => {
-    return schedule.find((s: any) => {
-      if (!s.startTime) return false;
+    return schedule?.find((s: any) => {
+      if (!s || !s.startTime || !s.endTime) return false;
       const st = new Date(s.startTime);
       const et = new Date(s.endTime);
 
@@ -579,7 +579,7 @@ export default function ProfileScreen() {
               onPress={() =>
                 router.push({
                   pathname: "/ocr-schedule",
-                  params: { date: selectedDate, day: activeDayIndex },
+                  params: { date: selectedDate, day: activeDayIndex, isUpdating: "1" },
                 })
               }
             >
@@ -666,7 +666,7 @@ export default function ProfileScreen() {
                       ]}
                     >
                       <Ionicons
-                        name={isM ? "checkmark-circle" : "book"}
+                        name={isM ? "checkmark-circle" : (slot.metadata?.icon || "book")}
                         size={20}
                         color={isM ? "#10B981" : "#FFF"}
                         style={{ marginRight: 10 }}
