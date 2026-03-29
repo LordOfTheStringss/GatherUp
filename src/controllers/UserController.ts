@@ -184,4 +184,40 @@ export class UserController {
     public async getTrustedCircle(): Promise<ResponseEntity<UserDTO[]>> {
         return { status: 200, data: [] };
     }
+
+    /**
+     * Fetches event history (hosted or attended) for the current user.
+     */
+    public async getEventHistory(type: 'hosted' | 'attended'): Promise<ResponseEntity<any[]>> {
+        try {
+            const user = await AuthManager.getInstance().getCurrentUser();
+            if (!user) throw new Error("Authentication required");
+            
+            const sb = SupabaseClient.getInstance().client;
+            let events: any[] = [];
+
+            if (type === 'hosted') {
+                const { data, error } = await sb
+                    .from('events')
+                    .select('*')
+                    .eq('organizer_id', user.id)
+                    .order('start_time', { ascending: false });
+                if (error) throw error;
+                events = data || [];
+            } else {
+                const { data, error } = await sb
+                    .from('event_participants')
+                    .select('event_id, events(*, users!events_organizer_id_fkey(full_name))')
+                    .eq('user_id', user.id)
+                    .order('joined_at', { ascending: false });
+                if (error) throw error;
+                events = (data || []).map((p: any) => p.events).filter(Boolean);
+            }
+
+            return { status: 200, data: events };
+        } catch (error: any) {
+            console.error(`UserController: Failed to fetch ${type} events`, error);
+            return { status: 500, message: error.message || "Failed to load events" };
+        }
+    }
 }
