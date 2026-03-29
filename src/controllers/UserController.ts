@@ -45,9 +45,9 @@ export class UserController {
     private userManager: UserManager;
     private friendshipManager: FriendshipManager;
 
-    constructor(userManager: UserManager, friendshipManager: FriendshipManager) {
-        this.userManager = userManager;
-        this.friendshipManager = friendshipManager;
+    constructor(userManager?: UserManager, friendshipManager?: FriendshipManager) {
+        this.userManager = userManager || UserManager.getInstance();
+        this.friendshipManager = friendshipManager || FriendshipManager.getInstance();
     }
 
     /**
@@ -63,21 +63,40 @@ export class UserController {
             } else {
                 effectiveId = userId;
             }
+            
+            console.log("UserController: Fetching profile for", effectiveId);
             const user = await this.userManager.getUserProfile(effectiveId);
+            if (!user) throw new Error("User profile not found in database");
 
             // Get stats
             const sClient = SupabaseClient.getInstance().client;
             const { count: eventsAttended } = await sClient.from('event_participants').select('*', { count: 'exact', head: true }).eq('user_id', effectiveId);
             const { count: eventsHosted } = await sClient.from('events').select('*', { count: 'exact', head: true }).eq('organizer_id', effectiveId);
-            const friends = await this.friendshipManager.getTrustedCircle(effectiveId);
+            
+            // Defensive check for friendshipManager
+            let friends = [];
+            if (this.friendshipManager && typeof this.friendshipManager.getTrustedCircle === 'function') {
+                try {
+                    friends = await this.friendshipManager.getTrustedCircle(effectiveId);
+                } catch (fem) {
+                    console.error("UserController: Friendship fetch failed", fem);
+                }
+            } else {
+                console.warn("UserController: FriendshipManager is invalid or missing getTrustedCircle", this.friendshipManager);
+            }
 
             // Sync and award badges gracefully, do not let it fail the profile fetch
             let updatedBadges: string[] = user.badges || [];
             try {
-                updatedBadges = await GamificationManager.getInstance().calculateAndAwardBadges(effectiveId);
+                const gm = GamificationManager.getInstance();
+                if (gm && typeof gm.calculateAndAwardBadges === 'function') {
+                    updatedBadges = await gm.calculateAndAwardBadges(effectiveId);
+                }
             } catch (err) {
                 console.error("Gamification fail:", err);
             }
+
+            console.log("UserController: Final Profile Data - Photo URL:", user.profile_image);
 
             return {
                 status: 200,
@@ -85,6 +104,7 @@ export class UserController {
                     id: user.id,
                     email: user.email,
                     fullName: user.full_name || '',
+                    profileImage: user.profile_image || null,
                     bio: user.privacy_settings?.bio || '',
                     xp: user.reputation_score || 0,
                     badges: updatedBadges,
@@ -95,12 +115,12 @@ export class UserController {
                         eventsHosted: eventsHosted || 0,
                         trustedCircleCount: friends ? friends.length : 0
                     },
-                    currentStatus: user.current_status || 'available'
+                    currentStatus: user.status || 'available'
                 }
             };
         } catch (error: any) {
-            console.error("UserController: Failed to fetch profile:", error);
-            return { status: 404, message: error.message || "User not found" };
+            console.error("UserController CRITICAL ERROR:", error);
+            return { status: 404, message: `Failed to fetch profile: ${error.message}` };
         }
     }
 
@@ -124,7 +144,7 @@ export class UserController {
                 interests: data.interests,
                 profilePhoto: data.profilePhoto,
                 baseLocation: data.baseLocation,
-                currentStatus: data.currentStatus
+                status: data.currentStatus
             });
             return { status: 200, message: "Profile Updated" };
         } catch (error: any) {

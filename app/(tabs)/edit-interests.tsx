@@ -123,10 +123,7 @@ export default function EditInterestsScreen() {
           const { FriendshipManager } =
             await import("../../src/core/identity/FriendshipManager");
 
-          const controller = new UserController(
-            UserManager.getInstance(),
-            new FriendshipManager({} as any)
-          );
+          const controller = new UserController();
           const res = await controller.getMyProfile();
 
           if (res.status === 200 && res.data?.interests) {
@@ -160,10 +157,7 @@ export default function EditInterestsScreen() {
       const { FriendshipManager } =
         await import("../../src/core/identity/FriendshipManager");
 
-      const controller = new UserController(
-        UserManager.getInstance(),
-        new FriendshipManager({} as any)
-      );
+      const controller = new UserController();
 
       await controller.updateProfile(undefined, { interests: selected });
       showToast("Interests updated!", "success");

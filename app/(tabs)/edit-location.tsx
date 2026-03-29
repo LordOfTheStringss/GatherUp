@@ -12,10 +12,7 @@ import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
 import { useTheme } from '../../src/theme/useTheme';
 
-const userController = new UserController(
-    UserManager.getInstance(),
-    new FriendshipManager(null as any)
-);
+const userController = new UserController();
 
 export default function EditLocationScreen() {
     const theme = useTheme();

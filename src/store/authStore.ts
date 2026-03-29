@@ -11,7 +11,7 @@ interface AuthState {
     isLoading: boolean;
     userEmail: string | null;
     login: (data: LoginDTO) => Promise<boolean>;
-    register: (data: RegisterDTO) => Promise<boolean>;
+    register: (data: RegisterDTO) => Promise<string | null>;
     logout: () => void;
 }
 
@@ -41,10 +41,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         try {
             const response = await authController.register(data);
             set({ isLoading: false });
-            return response.status === 201;
+            return response.status === 201 ? (response.data as string) : null;
         } catch (error) {
             set({ isLoading: false });
-            // Let the UI handle the exception to show specific messages
             throw error;
         }
     },

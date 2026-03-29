@@ -4,6 +4,7 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { Calendar, LocaleConfig } from "react-native-calendars"; // TAKVİM GERİ GELDİ!
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthManager } from "../../src/core/identity/AuthManager";
@@ -120,6 +122,7 @@ export default function ProfileScreen() {
   const [badges, setBadges] = useState<string[]>([]);
   const [baseLocation, setBaseLocation] = useState<string | null>(null);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // Event History Modal
@@ -148,14 +151,13 @@ export default function ProfileScreen() {
             }
           }
 
-          const userController = new UserController(
-            UserManager.getInstance(),
-            new FriendshipManager({} as any)
-          );
+          const userController = new UserController();
           const res = await userController.getMyProfile();
 
           if (res.status === 200 && res.data) {
+            console.log("Profile Screen: Received profile image URI:", res.data.profileImage);
             setUsername(res.data.fullName || null);
+            setProfileImage(res.data.profileImage || null);
             setInterests(res.data.interests || []);
             setBadges(res.data.badges || []);
             setBaseLocation(res.data.baseLocation || "Not Set");
@@ -230,7 +232,7 @@ export default function ProfileScreen() {
         await import("../../src/core/identity/FriendshipManager");
       const sessionData = await AuthManager.getInstance().getCurrentUser();
       if (!sessionData) throw new Error("Not auth");
-      const fm = new FriendshipManager({} as any);
+      const fm = FriendshipManager.getInstance();
       const circle = await fm.getTrustedCircle(sessionData.id);
       const requests = await fm.getPendingRequests(sessionData.id);
       setFriends(circle);
@@ -319,7 +321,7 @@ export default function ProfileScreen() {
       const { FriendshipManager } =
         await import("../../src/core/identity/FriendshipManager");
       const session = await AuthManager.getInstance().getCurrentUser();
-      const fm = new FriendshipManager({} as any);
+      const fm = FriendshipManager.getInstance();
       await fm.acceptRequest(session.id, friendId);
       showToast("Request accepted!", "success");
       loadFriends();
@@ -335,7 +337,7 @@ export default function ProfileScreen() {
       const { FriendshipManager } =
         await import("../../src/core/identity/FriendshipManager");
       const session = await AuthManager.getInstance().getCurrentUser();
-      const fm = new FriendshipManager({} as any);
+      const fm = FriendshipManager.getInstance();
       await fm.rejectRequest(session.id, friendId);
       showToast("Request rejected!", "success");
       loadFriends();
@@ -419,9 +421,20 @@ export default function ProfileScreen() {
         {/* Header Section */}
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>
-              {userEmail ? userEmail.charAt(0).toUpperCase() : "U"}
-            </Text>
+            {profileImage ? (
+              <ExpoImage 
+                source={{ uri: profileImage }} 
+                style={styles.avatarImage} 
+                contentFit="cover"
+                transition={500}
+                onLoad={() => console.log("Profile Screen: Image loaded successfully")}
+                onError={(e) => console.error("Profile Screen: Image load failed", e.error)}
+              />
+            ) : (
+              <Text style={styles.avatarText}>
+                {userEmail ? userEmail.charAt(0).toUpperCase() : "U"}
+              </Text>
+            )}
             <View style={styles.badgeIcon}>
               <Ionicons name="checkmark-circle" size={24} color="#10B981" />
             </View>
@@ -474,10 +487,7 @@ export default function ProfileScreen() {
               const newStatus = !isAvailable;
               setIsAvailable(newStatus);
               try {
-                const { UserController } = await import("../../src/controllers/UserController");
-                const { UserManager } = await import("../../src/core/identity/UserManager");
-                const { FriendshipManager } = await import("../../src/core/identity/FriendshipManager");
-                const controller = new UserController(UserManager.getInstance(), new FriendshipManager({} as any));
+                const controller = new UserController();
                 await controller.updateProfile(undefined, { currentStatus: newStatus ? 'available' : 'busy' });
               } catch (e) {
                 console.error("Failed to update status:", e);
@@ -1018,6 +1028,11 @@ const createStyles = (theme: ThemeColors) =>
       justifyContent: "center",
       alignItems: "center",
       marginBottom: 16,
+    },
+    avatarImage: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
     },
     avatarText: { fontSize: 40, fontWeight: "800", color: "#FFF" },
     badgeIcon: {
