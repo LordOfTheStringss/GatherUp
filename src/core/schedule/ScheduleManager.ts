@@ -186,6 +186,10 @@ export class ScheduleManager {
         const start = new Date(`${dateStr}T${row.start_time}`);
         const end = new Date(`${dateStr}T${row.end_time}`);
 
+        // If end time crosses midnight (like 23:00 to 02:00), push the end to the next day
+        if (end < start) {
+            end.setDate(end.getDate() + 1);
+        }
 
         const CATEGORIES_COLOR_MAP: Record<string, string> = {
           "Class": "#E11D48",

@@ -30,9 +30,13 @@ interface UIState {
     profileTooltipVisible: boolean;
     setProfileTooltipVisible: (visible: boolean) => void;
     handleDismissProfileTooltip: () => Promise<void>;
+    unreadCount: number;
+    setUnreadCount: (count: number) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
+    unreadCount: 0,
+    setUnreadCount: (count: number) => set({ unreadCount: count }),
     toast: { visible: false, message: '', type: 'info' },
     showToast: (message, type = 'info') => {
         set({ toast: { visible: true, message, type } });

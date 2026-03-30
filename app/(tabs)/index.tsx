@@ -40,7 +40,7 @@ interface EventStub {
 }
 
 export default function HomeScreen() {
-  const { showToast } = useUIStore();
+  const { showToast, unreadCount } = useUIStore();
   const [refreshing, setRefreshing] = useState(false);
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -325,6 +325,26 @@ export default function HomeScreen() {
               size={24}
               color={theme.textPrimary}
             />
+            {unreadCount > 0 && (
+                <View style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    backgroundColor: theme.danger || '#EF4444',
+                    borderRadius: 10,
+                    minWidth: 20,
+                    height: 20,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderWidth: 2,
+                    borderColor: theme.background,
+                    paddingHorizontal: 4,
+                }}>
+                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                    </Text>
+                </View>
+            )}
           </TouchableOpacity>
         </View>
 

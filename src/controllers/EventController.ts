@@ -72,9 +72,15 @@ export class EventController {
                 // --- Schedule overlap check ---
                 let endTime = new Date(eventDate.getTime());
                 if (request.duration) {
-                    const match = request.duration.match(/(\d+)/);
-                    if (match) endTime.setMinutes(endTime.getMinutes() + parseInt(match[1]));
-                    else endTime.setHours(endTime.getHours() + 2);
+                    let minutes = 60;
+                    if (request.duration === '30 mins') minutes = 30;
+                    else if (request.duration === '1.5 hours') minutes = 90;
+                    else if (request.duration === '2 hours') minutes = 120;
+                    else if (request.duration === '2.5 hours') minutes = 150;
+                    else if (request.duration === '3 hours') minutes = 180;
+                    else if (request.duration === '4 hours') minutes = 240;
+                    else if (request.duration === '5 hours') minutes = 300;
+                    endTime = new Date(endTime.getTime() + minutes * 60000);
                 } else {
                     endTime.setHours(endTime.getHours() + 2);
                 }

@@ -48,6 +48,17 @@ export default function TabLayout() {
 
             const supabase = SupabaseClient.getInstance().client;
             
+            // Fetch overall unread notifications count
+            const { count } = await supabase
+                .from('notifications')
+                .select('*', { count: 'exact', head: true })
+                .eq('user_id', user.id)
+                .eq('is_read', false);
+            
+            if (count !== null) {
+                useUIStore.getState().setUnreadCount(count);
+            }
+
             // Initial check for unread invites
             const { data } = await supabase
                 .from('notifications')
@@ -63,11 +74,16 @@ export default function TabLayout() {
                 setInviteModalVisible(true);
             }
 
-            // Realtime subscription for incoming invites
+            // Realtime subscription for incoming notifications
             channel = supabase
-                .channel('public:notifications:invites')
+                .channel('public:notifications:all')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload: any) => {
                     const newNotif = payload.new as any;
+                    
+                    if (!newNotif.is_read) {
+                        useUIStore.getState().setUnreadCount(useUIStore.getState().unreadCount + 1);
+                    }
+
                     if (newNotif.type === 'event_invite' && !newNotif.is_read) {
                         setCurrentInvite(newNotif);
                         setInviteModalVisible(true);

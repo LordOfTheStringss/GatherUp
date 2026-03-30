@@ -326,6 +326,11 @@ export default function CreateEventScreen() {
                 is_private: isPrivate
             } as any);
 
+            if (res.status === 500 || (res.status !== 201 && res.status !== 200)) {
+                showToast(res.message || 'Event creation failed', 'error');
+                return;
+            }
+
             // Event oluşturulduktan sonra, eğer AI tarafından önerilen user'lar varsa onlara notification gönderilecek
             if (aiSuggestedFriends.length > 0 && currentUser) {
                 const notificationService = NotificationService.getInstance();

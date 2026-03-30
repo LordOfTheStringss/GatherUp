@@ -245,9 +245,10 @@ export default function ProfileScreen() {
   const handleSendRequest = async () => {
     if (!newFriendUsername.trim()) return;
     try {
+      const { FriendshipManager } = await import("../../src/core/identity/FriendshipManager");
       const { SupabaseClient } = await import("../../src/infra/SupabaseClient");
-      const { AuthManager } =
-        await import("../../src/core/identity/AuthManager");
+      const { AuthManager } = await import("../../src/core/identity/AuthManager");
+      
       const sClient = SupabaseClient.getInstance().client;
       const userSession = await AuthManager.getInstance().getCurrentUser();
       const { data, error } = await sClient
@@ -261,10 +262,10 @@ export default function ProfileScreen() {
         showToast("User not found!", "error");
         return;
       }
-      const { error: insertErr } = await sClient
-        .from("friendships")
-        .insert({ user_id: userSession.id, friend_id: data.id });
-      if (insertErr) throw new Error(insertErr.message);
+      
+      const fm = FriendshipManager.getInstance();
+      await fm.sendRequest(userSession.id, data.id);
+      
       showToast("Friend request sent!", "success");
       setNewFriendUsername("");
     } catch (e: any) {

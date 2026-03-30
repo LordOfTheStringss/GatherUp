@@ -25,13 +25,13 @@ export class EventManager {
         let endTime = new Date(startTime.getTime() + 3600000); // Default 1 hour
         if (eventData.duration) {
             let minutes = 60;
-            if (eventData.duration.includes('30')) minutes = 30;
-            if (eventData.duration.includes('1.5')) minutes = 90;
-            if (eventData.duration.includes('2 hours')) minutes = 120;
-            if (eventData.duration.includes('2.5')) minutes = 150;
-            if (eventData.duration.includes('3')) minutes = 180;
-            if (eventData.duration.includes('4')) minutes = 240;
-            if (eventData.duration.includes('5')) minutes = 300;
+            if (eventData.duration === '30 mins') minutes = 30;
+            else if (eventData.duration === '1.5 hours') minutes = 90;
+            else if (eventData.duration === '2 hours') minutes = 120;
+            else if (eventData.duration === '2.5 hours') minutes = 150;
+            else if (eventData.duration === '3 hours') minutes = 180;
+            else if (eventData.duration === '4 hours') minutes = 240;
+            else if (eventData.duration === '5 hours') minutes = 300;
             endTime = new Date(startTime.getTime() + minutes * 60000);
         }
 

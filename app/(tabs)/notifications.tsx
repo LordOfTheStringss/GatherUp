@@ -3,14 +3,11 @@ import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { FlatList, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AuthManager } from '../../src/core/identity/AuthManager';
-import { FriendshipManager } from '../../src/core/identity/FriendshipManager';
 import { NotificationService } from '../../src/infra/NotificationService';
 import { SupabaseClient } from '../../src/infra/SupabaseClient';
 import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
 import { useTheme } from '../../src/theme/useTheme';
-
-const friendshipManager = new FriendshipManager(NotificationService.getInstance());
 
 export default function NotificationsScreen() {
     const theme = useTheme();
@@ -25,7 +22,9 @@ export default function NotificationsScreen() {
             const user = await AuthManager.getInstance().getCurrentUser();
             if (!user) return;
 
-            const { data, error } = await SupabaseClient.getInstance().client
+            const supabase = SupabaseClient.getInstance().client;
+
+            const { data, error } = await supabase
                 .from('notifications')
                 .select('*')
                 .eq('user_id', user.id)
@@ -33,6 +32,18 @@ export default function NotificationsScreen() {
 
             if (error) throw error;
             setNotifications(data || []);
+
+            // Mark all unread notifications as read
+            const unreadIds = data?.filter((n: any) => !n.is_read).map((n: any) => n.id) || [];
+            if (unreadIds.length > 0) {
+                await supabase
+                    .from('notifications')
+                    .update({ is_read: true })
+                    .in('id', unreadIds);
+            }
+
+            // Reset badge
+            useUIStore.getState().setUnreadCount(0);
         } catch (error: any) {
             showToast('Failed to load notifications', 'error');
         } finally {
@@ -44,38 +55,12 @@ export default function NotificationsScreen() {
         loadNotifications();
     }, []);
 
-    const handleAcceptRequest = async (notificationId: string, senderId: string) => {
-        try {
-            const user = await AuthManager.getInstance().getCurrentUser();
-            if (!user) return;
-            await friendshipManager.acceptRequest(user.id, senderId);
-            showToast('Friend request accepted!', 'success');
-
-            // Mark notification as read/handled (optional DB update could go here)
-            setNotifications(prev => prev.filter(n => n.id !== notificationId));
-        } catch (e) {
-            showToast('Accept failed', 'error');
-        }
-    };
-
-    const handleRejectRequest = async (notificationId: string, senderId: string) => {
-        try {
-            const user = await AuthManager.getInstance().getCurrentUser();
-            if (!user) return;
-            await friendshipManager.rejectRequest(user.id, senderId);
-
-            setNotifications(prev => prev.filter(n => n.id !== notificationId));
-        } catch (e) {
-            showToast('Reject failed', 'error');
-        }
-    };
-
     const renderItem = ({ item }: { item: any }) => {
         const isRequest = item.type === 'friend_request';
 
         return (
-            <View style={styles.notificationCard}>
-                <View style={styles.iconContainer}>
+            <View style={[styles.notificationCard, !item.is_read && { backgroundColor: theme.primaryLight + '20' }]}>
+                <View style={[styles.iconContainer, !item.is_read && { backgroundColor: theme.primaryLight }]}>
                     <Ionicons
                         name={isRequest ? "person-add" : "calendar"}
                         size={24}
@@ -83,25 +68,8 @@ export default function NotificationsScreen() {
                     />
                 </View>
                 <View style={styles.contentContainer}>
-                    <Text style={styles.title}>{item.title}</Text>
+                    <Text style={[styles.title, !item.is_read && { fontWeight: '800' }]}>{item.title}</Text>
                     <Text style={styles.body}>{item.body}</Text>
-
-                    {isRequest && item.data?.senderId && (
-                        <View style={styles.actionsRow}>
-                            <TouchableOpacity
-                                style={[styles.actionBtn, { backgroundColor: theme.primary }]}
-                                onPress={() => handleAcceptRequest(item.id, item.data.senderId)}
-                            >
-                                <Text style={styles.actionText}>Accept</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.actionBtn, { backgroundColor: theme.cardBorder }]}
-                                onPress={() => handleRejectRequest(item.id, item.data.senderId)}
-                            >
-                                <Text style={[styles.actionText, { color: theme.textSecondary }]}>Reject</Text>
-                            </TouchableOpacity>
-                        </View>
-                    )}
                 </View>
             </View>
         );
