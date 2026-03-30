@@ -68,7 +68,7 @@ export class EventManager {
 
         // Generate and save event embedding asynchronously
         const durationHours = (endTime.getTime() - startTime.getTime()) / 3600000;
-        
+
         VectorService.getInstance().generateEventEmbedding(data.id, {
             title: eventData.title,
             time: startTime,
@@ -154,10 +154,10 @@ export class EventManager {
         // 5. Filter out events that have already ended
         const now = new Date().toISOString();
         const activeEvents = Array.from(eventMap.values()).filter(e => e.end_time >= now);
-        
+
         // 6. Fetch participant counts for all events
         const eventIds = activeEvents.map(e => e.id);
-        
+
         if (eventIds.length > 0) {
             const { data: counts } = await this.supabaseClient.client
                 .from('event_participants')
@@ -205,29 +205,46 @@ export class EventManager {
             query = query.eq('organizer_id', filter.organizerId);
         }
 
-        if (filter.friendsOnly && filter.userId) {
-            // Fetch accepted friends (mutual follows)
-            const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', filter.userId);
-            const { data: whoIFollow } = await this.supabaseClient.client.from('friendships').select('friend_id').eq('user_id', filter.userId);
-
-            const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
-            const friendsIds = (whoFollowsMe || []).map((f: any) => f.user_id).filter((id: string) => myFollowingIds.includes(id));
-
-            let allowedIds = [filter.userId, ...friendsIds];
-            query = query.in('organizer_id', allowedIds);
-        } else if (filter.userId) {
-            // If not friends-only, but userId is provided (like in Nearby feed),
-            // we should only show (public events) OR (my events) OR (friends' events).
-            // We'll fetch friends first.
+        if (filter.userId) {
+            // Fetch accepted friends (mutual follows) to limit feed scope if friendsOnly=true
             const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', filter.userId);
             const { data: whoIFollow } = await this.supabaseClient.client.from('friendships').select('friend_id').eq('user_id', filter.userId);
             const myFollowingIds = (whoIFollow || []).map((f: any) => f.friend_id);
             const friendsIds = (whoFollowsMe || []).map((f: any) => f.user_id).filter((id: string) => myFollowingIds.includes(id));
-
             const allowedOrganizerIds = [filter.userId, ...friendsIds];
 
-            // Build the visibility condition: is_private is false OR organizer_id in allowedOrganizerIds
-            query = query.or(`is_private.eq.false,organizer_id.in.(${allowedOrganizerIds.join(',')})`);
+            // Determine which private events this user has explicit access to
+            // 1. Check event invites in notifications table
+            const { data: myInvites } = await this.supabaseClient.client
+                .from('notifications')
+                .select('data')
+                .eq('user_id', filter.userId)
+                .eq('type', 'event_invite');
+
+            const invitedEventIds = (myInvites || []).filter((n: any) => n.data && n.data.eventId).map((n: any) => n.data.eventId);
+
+            // 2. Check events user has already joined
+            const { data: myParticipations } = await this.supabaseClient.client
+                .from('event_participants')
+                .select('event_id')
+                .eq('user_id', filter.userId);
+
+            const participatedEventIds = (myParticipations || []).map((p: any) => p.event_id);
+
+            const allowedPrivateIds = [...new Set([...invitedEventIds, ...participatedEventIds])];
+            const privateIdsString = allowedPrivateIds.length > 0 ? `,id.in.(${allowedPrivateIds.join(',')})` : '';
+
+            // Visibility condition: Event is PUBLIC, OR I am the organizer, OR I have explicit access (invited/joined)
+            const visibilityOrCondition = `is_private.eq.false,organizer_id.eq.${filter.userId}${privateIdsString}`;
+
+            if (filter.friendsOnly) {
+                // If friendsOnly feed, restrict strictly to friends' events AND apply the visibility condition
+                query = query.in('organizer_id', allowedOrganizerIds);
+                query = query.or(visibilityOrCondition);
+            } else {
+                // If not friends-only (e.g. Nearby map), show everything that satisfies visibility
+                query = query.or(visibilityOrCondition);
+            }
         } else {
             // No userId, only show public events
             query = query.eq('is_private', false);
