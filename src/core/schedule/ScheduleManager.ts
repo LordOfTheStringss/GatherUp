@@ -85,11 +85,13 @@ export class ScheduleManager {
       }
       const realUserId = user.id;
 
-      // Clean Slate: Delete any existing rows for this user
+      // Clean Slate (Partial): Delete any existing manual rows for this user
+      // We specifically exclude EVENT-source slots from being wiped by manual schedule saves.
       const { error: deleteError } = await sb
         .from("schedule")
         .delete()
-        .eq("user_id", realUserId);
+        .eq("user_id", realUserId)
+        .neq("source", DataSource.EVENT);
 
       if (deleteError) {
         console.error("Failed to delete existing schedule:", deleteError);
@@ -236,56 +238,74 @@ export class ScheduleManager {
   }
 
   /**
-   * Blocks a time range for an event (auto-blocking when creating/joining).
-   * Rounds start hour down, end hour up to cover full hourly slots.
+   * Directly inserts a single event block into the schedule table.
+   * This is used when a user joins or creates an event to securely block out the time,
+   * without wiping or affecting manual schedule blocks.
    */
-  public async addEventBlock(
+  public async syncEventToSchedule(
     userId: string,
+    eventId: string,
     startTime: Date,
     endTime: Date,
-    eventTitle: string,
-    eventId: string
+    eventTitle: string
   ): Promise<boolean> {
     try {
-      const schedule = await this.getScheduleFromDB(userId);
+      const sb = SupabaseClient.getInstance().client;
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const DAYS_MAP = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-      // Check if already blocked for this event
-      const alreadyExists = schedule.some(
-        (s: any) => s.metadata?.eventId === eventId
-      );
-      if (alreadyExists) return true;
+      const start = new Date(startTime);
+      const end = new Date(endTime);
 
-      // Round start down to hour, end up to next hour for clean blocks
-      const blockStart = new Date(startTime);
-      blockStart.setMinutes(0, 0, 0);
+      const insertData = {
+        user_id: userId,
+        day_of_week: DAYS_MAP[start.getDay()],
+        start_time: `${pad(start.getHours())}:${pad(start.getMinutes())}:${pad(start.getSeconds())}`,
+        end_time: `${pad(end.getHours())}:${pad(end.getMinutes())}:${pad(end.getSeconds())}`,
+        is_busy: true,
+        label: "Event",
+        title: eventTitle,
+        specific_date: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+        source: DataSource.EVENT,
+      };
 
-      const blockEnd = new Date(endTime);
-      if (blockEnd.getMinutes() > 0) {
-        blockEnd.setHours(blockEnd.getHours() + 1);
-        blockEnd.setMinutes(0, 0, 0);
+      const { error } = await sb.from("schedule").insert(insertData);
+      
+      if (error) {
+        console.error("syncEventToSchedule DB error:", error);
+        return false;
       }
-
-      const newSlot = new TimeSlot(
-        `event-${eventId}`,
-        userId,
-        blockStart,
-        blockEnd,
-        BlockType.BUSY,
-        DataSource.EVENT,
-        false,
-        {
-          title: eventTitle,
-          type: "Event",
-          color: "#818CF8",
-          eventId: eventId,
-        }
-      );
-
-      schedule.push(newSlot);
-      await this.saveScheduleToDB(schedule, userId);
       return true;
     } catch (e) {
-      console.error("addEventBlock error:", e);
+      console.error("syncEventToSchedule error:", e);
+      return false;
+    }
+  }
+
+  /**
+   * Deletes a specific event's block from the physical schedule table.
+   * Called when a user leaves an event or the event is deleted.
+   */
+  public async removeEventFromSchedule(userId: string, eventTitle: string): Promise<boolean> {
+    try {
+      const sb = SupabaseClient.getInstance().client;
+      // We use both user_id and title to ensure we delete the correct block.
+      // Since we don't store eventId in the schedule schema columns natively (except sometimes in label/title),
+      // we match by title and source.
+      const { error } = await sb
+        .from("schedule")
+        .delete()
+        .eq("user_id", userId)
+        .eq("source", DataSource.EVENT)
+        .eq("title", eventTitle);
+
+      if (error) {
+        console.error("removeEventFromSchedule DB error:", error);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.error("removeEventFromSchedule error:", e);
       return false;
     }
   }

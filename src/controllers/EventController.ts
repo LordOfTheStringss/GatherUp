@@ -5,6 +5,7 @@ import { AuthManager } from '../core/identity/AuthManager';
 import { GeoPoint } from '../spatial/Location';
 import { ResponseEntity } from './ResponseEntity';
 import { SupabaseClient } from '../infra/SupabaseClient';
+import { ScheduleManager } from '../core/schedule/ScheduleManager';
 
 export interface CreateEventDTO {
     title: string;
@@ -91,6 +92,17 @@ export class EventController {
             }
 
             const event = await this.eventManager.createEvent(user.id, request);
+
+            // Sync to schedule table
+            const scheduleManager = new ScheduleManager();
+            await scheduleManager.syncEventToSchedule(
+                user.id,
+                event.id,
+                new Date(event.start_time),
+                new Date(event.end_time),
+                event.title
+            );
+
             return { status: 201, data: event, message: "Event Created" };
         } catch (error: any) {
             return { status: 500, message: error.message || "Event creation failed" };
@@ -211,6 +223,17 @@ export class EventController {
             }
 
             await this.eventManager.joinEvent(eventId, user.id);
+            
+            // Sync to explicit schedule block
+            const scheduleManager = new ScheduleManager();
+            await scheduleManager.syncEventToSchedule(
+                user.id,
+                eventId,
+                eventDate,
+                endTime,
+                targetEvent.title
+            );
+
             return { status: 200, message: "Joined Event" };
         } catch (error: any) {
             return { status: 500, message: error.message || "Failed to join event" };
@@ -221,7 +244,23 @@ export class EventController {
      * Removes user from event.
      */
     public async leaveEvent(eventId: string): Promise<ResponseEntity> {
-        return { status: 200, message: "Left Event" };
+        try {
+            const user = await AuthManager.getInstance().getCurrentUser();
+            if (!user) throw new Error("Authentication required");
+            
+            // Technically we should remove participation through EventManager
+            // For now, at minimum, we sync the schedule block removal
+            const sClient = SupabaseClient.getInstance().client;
+            const { data } = await sClient.from('events').select('title').eq('id', eventId).single();
+            if (data?.title) {
+                const scheduleManager = new ScheduleManager();
+                await scheduleManager.removeEventFromSchedule(user.id, data.title);
+            }
+            
+            return { status: 200, message: "Left Event" };
+        } catch (e: any) {
+             return { status: 500, message: e.message || "Failed to leave event" };
+        }
     }
 
     /**
@@ -266,7 +305,17 @@ export class EventController {
     }
     public async endEvent(eventId: string): Promise<{ status: number, message: string }> {
         try {
+            const user = await AuthManager.getInstance().getCurrentUser();
+            const sClient = SupabaseClient.getInstance().client;
+            const { data } = await sClient.from('events').select('title').eq('id', eventId).single();
+
             await this.eventManager.endEvent(eventId);
+
+            if (user && data?.title) {
+                const scheduleManager = new ScheduleManager();
+                await scheduleManager.removeEventFromSchedule(user.id, data.title);
+            }
+
             return { status: 200, message: 'Event ended successfully' };
         } catch (e: any) {
             return { status: 500, message: e.message };
