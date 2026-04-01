@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, Animated, FlatList, KeyboardAvoidingView, ScrollView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, FlatList, KeyboardAvoidingView, ScrollView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useUIStore } from '../../src/store/uiStore';
 import { getColorForTag, getCategoryForTag } from '../../src/data/interestTags';
@@ -43,11 +43,13 @@ export default function EventDetailScreen() {
     const [participants, setParticipants] = useState<any[]>([]);
     const [eventDetails, setEventDetails] = useState<any | null>(null);
     const [organizerName, setOrganizerName] = useState('');
+    const [isLoadingEvent, setIsLoadingEvent] = useState(true);
 
     useEffect(() => {
         let channel: any;
 
         const fetchEventData = async () => {
+            setIsLoadingEvent(true);
             try {
                 const { AuthManager } = await import('../../src/core/identity/AuthManager');
                 const session = await AuthManager.getInstance().getCurrentUser();
@@ -150,6 +152,8 @@ export default function EventDetailScreen() {
 
             } catch (error) {
                 console.error("Failed to load event data", error);
+            } finally {
+                setIsLoadingEvent(false);
             }
         };
 
@@ -160,51 +164,69 @@ export default function EventDetailScreen() {
         };
     }, [id]);
 
-    const handleJoinEvent = async () => {
-        Alert.alert("Join Event", "Are you sure you want to join this event?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Join", onPress: async () => {
-                try {
-                    const { EventController } = await import('../../src/controllers/EventController');
-                    const { EventManager } = await import('../../src/core/event/EventManager');
-                    const evController = new EventController(EventManager.getInstance(), {} as any, {} as any);
+    const handleJoinEvent = async (forceJoin: boolean = false) => {
+        if (!forceJoin) {
+            Alert.alert("Join Event", "Are you sure you want to join this event?", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Join", onPress: () => performJoin(false) }
+            ]);
+        } else {
+            performJoin(true);
+        }
+    };
 
-                    const res = await evController.joinEvent(id as string);
-                    if (res.status === 200) {
-                        showToast("Successfully joined event!", "success");
-                        setHasJoined(true);
-                        const { AuthManager } = await import('../../src/core/identity/AuthManager');
-                        const user = await AuthManager.getInstance().getCurrentUser();
-                        if (user) {
-                            const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
-                            const { data: me } = await SupabaseClient.getInstance().client.from('users').select('id, full_name, profile_image, badges').eq('id', user.id).single();
-                            if (me) {
-                                setParticipants(prev => [...prev, me]);
-                            }
-                        }
-                        const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
-                        const { data: freshChat } = await SupabaseClient.getInstance().client
-                            .from('chat_messages')
-                            .select('id, content, sender_id, created_at, users(full_name)')
-                            .eq('event_id', id)
-                            .order('created_at', { ascending: false });
-                        if (freshChat) setMessages(freshChat);
-                    } else {
-                        showToast(res.message || "Could not join", "error");
+    const performJoin = async (forceJoin: boolean) => {
+        try {
+            const { EventController } = await import('../../src/controllers/EventController');
+            const { EventManager } = await import('../../src/core/event/EventManager');
+            const evController = new EventController(EventManager.getInstance(), {} as any, {} as any);
+
+            const res = await evController.joinEvent(id as string, forceJoin);
+            
+            if (res.status === 409) {
+                // Schedule conflict — ask user if they want to force join
+                Alert.alert(
+                    "Schedule Conflict",
+                    res.message || "You have a conflicting event. Join anyway?",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Yes, Join Anyway", style: "destructive", onPress: () => handleJoinEvent(true) }
+                    ]
+                );
+                return;
+            }
+            
+            if (res.status === 200) {
+                showToast("Successfully joined event!", "success");
+                setHasJoined(true);
+                const { AuthManager } = await import('../../src/core/identity/AuthManager');
+                const user = await AuthManager.getInstance().getCurrentUser();
+                if (user) {
+                    const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+                    const { data: me } = await SupabaseClient.getInstance().client.from('users').select('id, full_name, profile_image, badges').eq('id', user.id).single();
+                    if (me) {
+                        setParticipants(prev => [...prev, me]);
                     }
-                } catch (e: any) {
-                    showToast(e.message || "Error joining", "error");
                 }
-            }}
-        ]);
+                const { SupabaseClient } = await import('../../src/infra/SupabaseClient');
+                const { data: freshChat } = await SupabaseClient.getInstance().client
+                    .from('chat_messages')
+                    .select('id, content, sender_id, created_at, users(full_name)')
+                    .eq('event_id', id)
+                    .order('created_at', { ascending: false });
+                if (freshChat) setMessages(freshChat);
+            } else {
+                showToast(res.message || "Could not join", "error");
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error joining", "error");
+        }
     };
 
     const handleAddFriend = async (friendId: string) => {
         try {
-            const { NotificationService } = await import('../../src/infra/NotificationService');
             const { FriendshipManager } = await import('../../src/core/identity/FriendshipManager');
-            const notifSvc = NotificationService.getInstance();
-            const friendshipManager = new FriendshipManager(notifSvc);
+            const friendshipManager = FriendshipManager.getInstance();
             
             await friendshipManager.sendRequest(currentUserId, friendId);
             showToast("Friend request sent!", "success");
@@ -293,6 +315,19 @@ export default function EventDetailScreen() {
     };
 
     const categoryColor = eventDetails ? getColorForTag(eventDetails.sub_category) : '#3B82F6';
+
+    // Loading state — show spinner until data is fetched
+    if (isLoadingEvent) {
+        return (
+            <SafeAreaView style={styles.safeArea}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={theme.primary} />
+                    <Text style={{ color: theme.textSecondary, marginTop: 16, fontSize: 16, fontWeight: '600' }}>Loading event...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     // If chat is open, show chat UI
     if (showChat && hasJoined) {
@@ -549,7 +584,7 @@ export default function EventDetailScreen() {
             {/* Bottom Action Bar */}
             <View style={styles.bottomBar}>
                 {!hasJoined ? (
-                    <TouchableOpacity style={[styles.mainActionBtn, { backgroundColor: categoryColor }]} onPress={handleJoinEvent}>
+                    <TouchableOpacity style={[styles.mainActionBtn, { backgroundColor: categoryColor }]} onPress={() => handleJoinEvent()}>
                         <Ionicons name="enter" size={22} color="#FFF" style={{ marginRight: 8 }} />
                         <Text style={styles.mainActionText}>Join Event</Text>
                     </TouchableOpacity>

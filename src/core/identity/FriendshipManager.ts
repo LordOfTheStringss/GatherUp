@@ -21,6 +21,11 @@ export class FriendshipManager {
     public async sendRequest(from: string, to: string): Promise<void> {
         const { error } = await this.supabaseClient.client.from('friendships').insert({ user_id: from, friend_id: to });
         if (error) {
+            // Check if it's a duplicate key error (23505)
+            if (error.code === '23505') {
+                console.log('Friend request already exists.');
+                return;
+            }
             console.error('sendRequest error:', error);
             throw new Error(error.message);
         }
@@ -36,6 +41,7 @@ export class FriendshipManager {
         // me accepts them => me inserts them
         const { error } = await this.supabaseClient.client.from('friendships').insert({ user_id: me, friend_id: them });
         if (error) {
+            if (error.code === '23505') return;
             console.error('acceptRequest error:', error);
             throw new Error(error.message);
         }

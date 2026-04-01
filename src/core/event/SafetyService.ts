@@ -10,7 +10,7 @@ export class SafetyService {
 
     constructor() {
         this.notificationService = NotificationService.getInstance();
-        this.friendshipManager = new FriendshipManager(this.notificationService);
+        this.friendshipManager = FriendshipManager.getInstance();
     }
 
     /**

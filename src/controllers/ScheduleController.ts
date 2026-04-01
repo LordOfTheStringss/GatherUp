@@ -31,17 +31,13 @@ export class ScheduleController {
   // --- UI İÇİN YEREL STATE (STATE MANAGEMENT) METOTLARI ---
 
   public handleToggleSlot(
-    currentSchedule: TimeSlot[],
+    schedule: TimeSlot[],
+    dateStr: string,
     dayIndex: number,
     hour: number,
-    userId: string,
+    userId: string = "user-123",
   ): TimeSlot[] {
-    return this.scheduleManager.toggleTimeSlot(
-      currentSchedule,
-      dayIndex,
-      hour,
-      userId,
-    );
+    return this.scheduleManager.toggleTimeSlot(schedule, dateStr, dayIndex, hour, userId);
   }
 
   public handleDeleteEvent(
@@ -91,22 +87,18 @@ export class ScheduleController {
       if (userId !== "user-123") {
         const sb = SupabaseClient.getInstance().client;
         
-        const nowIso = new Date().toISOString();
-
-        // Fetch hosted events
-        const { data: hosted } = await sb.from('events').select('*').eq('organizer_id', userId).gt('end_time', nowIso);
+        // Fetch all hosted and attended events
+        const { data: hosted } = await sb.from('events').select('*').eq('organizer_id', userId);
         if (hosted) {
           hosted.forEach((e: any) => {
             const blockStart = new Date(e.start_time);
-            blockStart.setMinutes(0, 0, 0);
             const blockEnd = new Date(e.end_time);
             
-            // Adjust end time to next hour if it's not on the hour, or if it exactly matches start time due to rounding
-            if (blockEnd.getMinutes() > 0 || blockEnd.getTime() <= blockStart.getTime()) {
-              blockEnd.setHours(blockEnd.getHours() + 1);
-              blockEnd.setMinutes(0, 0, 0);
+            if (blockStart >= blockEnd) {
+              console.warn(`Skipping invalid hosted event #${e.id}: start_time (${e.start_time}) is after end_time (${e.end_time})`);
+              return;
             }
-            
+
             eventSlots.push(new TimeSlot(
               `event-${e.id}`,
               userId,
@@ -114,26 +106,25 @@ export class ScheduleController {
               blockEnd,
               BlockType.BUSY,
               DataSource.EVENT,
-              false,
+              false, // NEVER recurring
               { title: e.title, type: "Event (Hosted)", color: "#818CF8", eventId: e.id }
             ));
           });
         }
 
-        // Fetch attended events
         const { data: attended } = await sb.from('event_participants').select('event_id, events(*)').eq('user_id', userId);
         if (attended) {
           attended.forEach((p: any) => {
             const e = p.events;
-            if (!e || e.end_time <= nowIso) return;
-            if (eventSlots.some(s => s.slotId === `event-${e.id}`)) return; // skip if hosted
+            if (!e) return;
+            if (eventSlots.some(s => s.slotId === `event-${e.id}`)) return;
             
             const blockStart = new Date(e.start_time);
-            blockStart.setMinutes(0, 0, 0);
             const blockEnd = new Date(e.end_time);
-            if (blockEnd.getMinutes() > 0 || blockEnd.getTime() <= blockStart.getTime()) {
-              blockEnd.setHours(blockEnd.getHours() + 1);
-              blockEnd.setMinutes(0, 0, 0);
+
+            if (blockStart >= blockEnd) {
+                console.warn(`Skipping invalid attended event #${e.id}: start_time (${e.start_time}) is after end_time (${e.end_time})`);
+                return;
             }
 
             eventSlots.push(new TimeSlot(
@@ -143,7 +134,7 @@ export class ScheduleController {
               blockEnd,
               BlockType.BUSY,
               DataSource.EVENT,
-              false,
+              false, // NEVER recurring
               { title: e.title, type: "Event", color: "#10B981", eventId: e.id }
             ));
           });
@@ -153,7 +144,8 @@ export class ScheduleController {
       console.error("Failed to fetch dynamic events for schedule:", err);
     }
 
-    // Combine local manual blocks (filter out old cached events) with fresh DB events
+    // Filter local manual/OCR blocks (keep only those that are NOT events)
+    // Legacy entries with source=EVENT in the schedule table are stale and should be ignored
     const manualSlots = localSlots.filter(s => s.source !== DataSource.EVENT);
     const combined = [...manualSlots, ...eventSlots];
 

@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
     Platform,
@@ -163,9 +163,11 @@ export default function HomeScreen() {
     else if (tooltipStep === 3) setActiveTab("nearby");
   }, [tooltipStep]);
 
-  useEffect(() => {
-    loadFeeds();
-  }, [activeTab, radius]);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadFeeds();
+    }, [activeTab, radius])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);

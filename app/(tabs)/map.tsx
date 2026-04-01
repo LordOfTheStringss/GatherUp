@@ -54,6 +54,7 @@ export default function MapScreen() {
     const { showToast, setGlobalLoading, mapTooltipVisible, setMapTooltipVisible, handleDismissMapTooltip } = useUIStore();
     const [selectedCoord, setSelectedCoord] = useState<{ latitude: number, longitude: number } | null>(null);
     const [trendingEvents, setTrendingEvents] = useState<any[]>([]);
+    const [topCategories, setTopCategories] = useState<{ category: string; count: number; color: string }[]>([]);
     const mapRef = useRef<MapView>(null);
     const [currentRegion, setCurrentRegion] = useState<Region>({
         latitude: 39.92077,
@@ -126,22 +127,44 @@ export default function MapScreen() {
         }, [])
     );
 
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371; // km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    };
+
     const handleMapPress = (coord: { latitude: number, longitude: number }) => {
         setSelectedCoord(coord);
 
-        const nearby = allEvents.filter(e =>
-            Math.abs(e.location_lat - coord.latitude) < 0.05 &&
-            Math.abs(e.location_lng - coord.longitude) < 0.05
-        );
+        const nearby = allEvents.filter(e => {
+            const dist = calculateDistance(e.location_lat, e.location_lng, coord.latitude, coord.longitude);
+            return dist <= 5.0; // 5.0 km radius
+        });
 
         const mappedTrending = nearby.map(e => ({
             id: e.id,
             title: e.title,
-            // Real participant count: participants + organizer (1)
             participants: (participantCounts[e.id] || 0) + 1,
             category: e.sub_category
         }));
 
+        // Group by sub_category for trend analysis
+        const catCounts: Record<string, number> = {};
+        nearby.forEach(e => {
+            const cat = e.sub_category || 'Other';
+            catCounts[cat] = (catCounts[cat] || 0) + 1;
+        });
+        const sortedCategories = Object.entries(catCounts)
+            .map(([category, count]) => ({ category, count, color: getColorForTag(category) }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+
+        setTopCategories(sortedCategories);
         setTrendingEvents(mappedTrending);
     };
 
@@ -326,11 +349,41 @@ export default function MapScreen() {
 
                 {/* Trending Events Bottom Panel */}
                 {selectedCoord && trendingEvents.length > 0 && (
-                    <View style={styles.trendingPanel}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <ScrollView style={styles.trendingPanel} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                             <Text style={styles.trendingPanelTitle}>Trending Nearby</Text>
                             <TouchableOpacity onPress={() => setSelectedCoord(null)}><Ionicons name="close" size={24} color="#94A3B8" /></TouchableOpacity>
                         </View>
+
+                        {/* Category Trend Bars */}
+                        {topCategories.length > 0 && (
+                            <View style={{ marginBottom: 20 }}>
+                                <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Most Popular Activities</Text>
+                                {topCategories.map((cat, idx) => {
+                                    const maxCount = topCategories[0].count;
+                                    const barWidth = maxCount > 0 ? (cat.count / maxCount) * 100 : 0;
+                                    return (
+                                        <View key={cat.category} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                                            <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: cat.color + '20', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                                                <Text style={{ fontSize: 14 }}>{idx === 0 ? '🔥' : idx === 1 ? '⭐' : '📍'}</Text>
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                    <Text style={{ color: theme.textPrimary, fontSize: 13, fontWeight: '700' }}>{cat.category}</Text>
+                                                    <Text style={{ color: cat.color, fontSize: 12, fontWeight: '800' }}>{cat.count} events</Text>
+                                                </View>
+                                                <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.cardBorder, overflow: 'hidden' }}>
+                                                    <View style={{ width: `${barWidth}%`, height: '100%', borderRadius: 3, backgroundColor: cat.color }} />
+                                                </View>
+                                            </View>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        )}
+
+                        {/* Individual Events */}
+                        <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Events in Area</Text>
                         {trendingEvents.map(event => (
                             <TouchableOpacity key={event.id} style={styles.trendingEventRow} onPress={() => router.push(`/event/${event.id}`)}>
                                 <View style={[styles.trendingEventIcon, { backgroundColor: getColorForTag(event.category) + '20' }]}>
@@ -345,7 +398,7 @@ export default function MapScreen() {
                                 </View>
                             </TouchableOpacity>
                         ))}
-                    </View>
+                    </ScrollView>
                 )}
 
                 {/* Zero State Bottom Panel */}
@@ -489,6 +542,7 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
         bottom: 20,
         left: 20,
         right: 20,
+        maxHeight: height * 0.45,
         backgroundColor: theme.card,
         padding: 24,
         borderRadius: 24,

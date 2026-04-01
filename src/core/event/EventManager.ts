@@ -82,13 +82,6 @@ export class EventManager {
             description: eventData.description
         }).catch((e: any) => console.error("Failed to generate event embedding:", e));
 
-        // Auto-block organizer's calendar
-        import('../../core/schedule/ScheduleManager').then(({ ScheduleManager }) => {
-            new ScheduleManager().addEventBlock(
-                organizerId, startTime, endTime, eventData.title, data.id
-            );
-        }).catch(e => console.error("Failed to block calendar:", e));
-
         return data;
     }
 
@@ -358,19 +351,6 @@ export class EventManager {
             }
         }
 
-        // 5. Auto-block participant's calendar
-        try {
-            const { ScheduleManager } = await import('../../core/schedule/ScheduleManager');
-            await new ScheduleManager().addEventBlock(
-                userId,
-                new Date(eventData.start_time),
-                new Date(eventData.end_time),
-                eventData.title,
-                eventId
-            );
-        } catch (e) {
-            console.error("Failed to block calendar on join:", e);
-        }
     }
     public async getEventParticipants(eventId: string): Promise<any[]> {
         const { data, error } = await this.supabaseClient.client

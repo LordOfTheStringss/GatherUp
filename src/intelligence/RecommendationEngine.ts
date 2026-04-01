@@ -494,7 +494,7 @@ export class RecommendationEngine {
             row.id,
             row.organizer_id,
             row.title,
-            (row.category as EventCategory) || EventCategory.SOSYAL,
+            (row.category as EventCategory) || EventCategory.SOCIAL,
             row.sub_category || '',
             location,
             timeSlot,

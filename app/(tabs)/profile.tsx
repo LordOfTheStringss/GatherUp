@@ -14,7 +14,8 @@ import {
   View,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
-import { Calendar, LocaleConfig } from "react-native-calendars"; // TAKVİM GERİ GELDİ!
+import { Calendar, LocaleConfig } from "react-native-calendars";
+import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthManager } from "../../src/core/identity/AuthManager";
 import { OnboardingTooltip } from "../../src/components/OnboardingTooltip";
@@ -28,6 +29,7 @@ import { UserController } from "../../src/controllers/UserController";
 import { UserManager } from "../../src/core/identity/UserManager";
 import { FriendshipManager } from "../../src/core/identity/FriendshipManager";
 import { GamificationManager } from "../../src/core/identity/GamificationManager";
+import { DataSource, TimeSlot } from "../../src/core/schedule/TimeSlot";
 
 const BADGE_CONFIG: Record<string, { icon: any; title: string; color: string; desc: string }> = {
   FIRST_STEP: { icon: "footsteps", title: "First Step", color: "#3B82F6", desc: "1 Event Attended" },
@@ -121,14 +123,47 @@ export default function ProfileScreen() {
   const [interests, setInterests] = useState<string[]>([]);
   const [badges, setBadges] = useState<string[]>([]);
   const [baseLocation, setBaseLocation] = useState<string | null>(null);
-  const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [locationSearchText, setLocationSearchText] = useState("");
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [remoteResults, setRemoteResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // TAKVİM İÇİN SEÇİLİ GÜN STATE'İ
+  const handleSearchBaseLocation = async () => {
+    if (!locationSearchText.trim()) return;
+    setIsSearchingLocation(true);
+    try {
+      const q = locationSearchText.toLowerCase().includes("ankara") 
+        ? locationSearchText 
+        : `${locationSearchText}, Ankara, Turkey`;
+        
+      const res = await Location.geocodeAsync(q);
+      if (res && res.length > 0) {
+        const addresses = await Promise.all(
+          res.slice(0, 3).map(async (loc) => {
+            const addr = await Location.reverseGeocodeAsync({ latitude: loc.latitude, longitude: loc.longitude });
+            const a = addr[0];
+            const name = a ? [a.street, a.district, a.subregion].filter(Boolean).join(', ') : `${loc.latitude.toFixed(3)}, ${loc.longitude.toFixed(3)}`;
+            return { id: `geo-${loc.latitude}-${loc.longitude}`, label: name || "Ankara" };
+          })
+        );
+        setRemoteResults(addresses);
+      }
+    } catch (e) {
+      console.log("Geocode failed", e);
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
+
+  // TAKVİM İÇİN SEÇİLİ GÜN STATE’İ (Local time fix)
   const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   });
 
   const activeDayIndex = getDayIndexFromDateString(selectedDate);
@@ -167,55 +202,75 @@ export default function ProfileScreen() {
             setIsAvailable(res.data.currentStatus === 'available');
           }
 
-          const { ScheduleController } =
-            await import("../../src/controllers/ScheduleController");
-          const { ScheduleManager } =
-            await import("../../src/core/schedule/ScheduleManager");
-          const { OCRProcessor } =
-            await import("../../src/core/schedule/OCRProcessor");
+          const { ScheduleController } = await import("../../src/controllers/ScheduleController");
+          const { ScheduleManager } = await import("../../src/core/schedule/ScheduleManager");
+          const { OCRProcessor } = await import("../../src/core/schedule/OCRProcessor");
+          // types already imported at top
 
-          const scheduleController = new ScheduleController(
-            new ScheduleManager(),
-            new OCRProcessor(),
-          );
-          const scheduleRes = await scheduleController.getMySchedule(
-            new Date(),
-            user?.id
-          );
+          const sc = new ScheduleController(new ScheduleManager(), new OCRProcessor());
+          const scheduleRes = await sc.getMySchedule(new Date(), user?.id);
 
           if (scheduleRes.status === 200 && scheduleRes.data?.busyBlocks) {
             setSchedule(scheduleRes.data.busyBlocks);
+          }
+        } catch (e) {
+          console.error("Profile load err", e);
+        } finally {
+          setIsLoading(false);
+          setGlobalLoading(false);
         }
-      } catch (e) {
-        console.error("Profile load err", e);
-      } finally {
-        setIsLoading(false);
-        setGlobalLoading(false);
-      }
-    };
+      };
       fetchProfileData();
     }, []),
   );
 
-  const getSlotForHour = (hourInt: number) => {
-    return schedule?.find((s: any) => {
-      if (!s || !s.startTime || !s.endTime) return false;
-      const st = new Date(s.startTime);
-      const et = new Date(s.endTime);
+  const toggleSlot = async (hour: number) => {
+    try {
+      const { ScheduleController } = await import("../../src/controllers/ScheduleController");
+      const { ScheduleManager } = await import("../../src/core/schedule/ScheduleManager");
+      const { OCRProcessor } = await import("../../src/core/schedule/OCRProcessor");
+      const user = await AuthManager.getInstance().getCurrentUser();
 
-      const pad = (n: number) => n.toString().padStart(2, "0");
-      const localDateStr = `${st.getFullYear()}-${pad(st.getMonth() + 1)}-${pad(st.getDate())}`;
-
-      const isDateMatch = s.isRecurring
-        ? st.getDay() === activeDayIndex
-        : localDateStr === selectedDate;
-
-      return (
-        isDateMatch &&
-        st.getHours() <= hourInt &&
-        et.getHours() > hourInt
+      const sc = new ScheduleController(new ScheduleManager(), new OCRProcessor());
+      const newSchedule = sc.handleToggleSlot(
+        schedule,
+        selectedDate,
+        activeDayIndex,
+        hour,
+        user?.id || ""
       );
+      setSchedule([...newSchedule]);
+    } catch (e) {
+      console.error("Toggle slot err", e);
+    }
+  };
+
+  const getSlotForHour = (hourInt: number) => {
+    const [year, month, day] = selectedDate.split("-").map(Number);
+    const targetHourStart = new Date(year, month - 1, day, hourInt, 0, 0);
+    const targetHourEnd = new Date(year, month - 1, day, hourInt + 1, 0, 0);
+
+    const matches = schedule?.filter((s: any) => {
+      if (!s || !s.startTime || !s.endTime) return false;
+      let st = new Date(s.startTime);
+      let et = new Date(s.endTime);
+
+      if (s.isRecurring) {
+        if (st.getDay() !== activeDayIndex) return false;
+        st = new Date(year, month - 1, day, st.getHours(), st.getMinutes(), st.getSeconds());
+        et = new Date(year, month - 1, day, et.getHours(), et.getMinutes(), et.getSeconds());
+        if (et <= st) {
+          et.setDate(et.getDate() + 1);
+        }
+      }
+
+      return st.getTime() < targetHourEnd.getTime() && et.getTime() > targetHourStart.getTime();
     });
+
+    if (!matches || matches.length === 0) return undefined;
+    
+    const eventSlot = matches.find((m: any) => m.source === DataSource.EVENT);
+    return eventSlot || matches[0];
   };
 
   const loadFriends = async () => {
@@ -318,6 +373,7 @@ export default function ProfileScreen() {
       setBaseLocation(label);
       setLocationModalVisible(false);
       showToast("Base location updated!", "success");
+      setLocationSearchText("");
     } catch (e: any) {
       showToast(e.message, "error");
     } finally {
@@ -616,11 +672,9 @@ export default function ProfileScreen() {
                   style={styles.timelineRow} 
                   key={`hour-${h}`}
                   onPress={() => {
-                    if (slot.metadata?.eventId) {
-                      router.push({
-                        pathname: "/event/[id]",
-                        params: { id: slot.metadata.eventId }
-                      });
+                    const eventId = slot.metadata?.eventId || slot.slotId?.replace("event-", "");
+                    if (eventId && slot.source === DataSource.EVENT) {
+                      router.push(`/event/${eventId}`);
                     }
                   }}
                   disabled={isM}
@@ -903,19 +957,75 @@ export default function ProfileScreen() {
                 <Ionicons name="close" size={28} color={theme.textPrimary} />
               </TouchableOpacity>
             </View>
+            <View style={styles.modalSearchContainer}>
+              <Ionicons name="search" size={20} color={theme.textSecondary} />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search neighborhood or address..."
+                placeholderTextColor={theme.textSecondary}
+                value={locationSearchText}
+                onChangeText={(t) => {
+                  setLocationSearchText(t);
+                  if (t.length === 0) setRemoteResults([]);
+                }}
+                onSubmitEditing={handleSearchBaseLocation}
+                autoFocus={true}
+              />
+              {isSearchingLocation ? (
+                <ActivityIndicator size="small" color={theme.primary} style={{ marginRight: 8 }} />
+              ) : (
+                locationSearchText.length > 0 && (
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <TouchableOpacity onPress={handleSearchBaseLocation}>
+                      <Text style={{ color: theme.primary, fontWeight: '700' }}>Search</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { setLocationSearchText(""); setRemoteResults([]); }}>
+                      <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                )
+              )}
+            </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {ANKARA_NEIGHBORHOODS.map((loc) => (
+              {/* Local Neighborhoods Filtered */}
+              {ANKARA_NEIGHBORHOODS
+                .filter(loc => loc.label.toLowerCase().includes(locationSearchText.toLowerCase()))
+                .map((loc) => (
                 <TouchableOpacity
                   key={loc.id}
                   style={styles.locationOptionRow}
-                  onPress={() => handleUpdateBaseLocation(loc.label)}
+                  onPress={() => {
+                    handleUpdateBaseLocation(loc.label);
+                    setRemoteResults([]);
+                  }}
                 >
                   <Ionicons name="location-outline" size={20} color={baseLocation === loc.label ? theme.primary : theme.textSecondary} />
                   <Text style={[styles.locationOptionText, baseLocation === loc.label && { color: theme.primary, fontWeight: "bold" }]}>
-                    {loc.label}
+                    {loc.label} (Verified)
                   </Text>
                 </TouchableOpacity>
               ))}
+
+              {/* Remote Geocoding Results */}
+              {remoteResults.map((loc) => (
+                <TouchableOpacity
+                  key={loc.id}
+                  style={styles.locationOptionRow}
+                  onPress={() => {
+                    handleUpdateBaseLocation(loc.label);
+                    setRemoteResults([]);
+                  }}
+                >
+                  <Ionicons name="navigate-outline" size={20} color={theme.primary} />
+                  <Text style={styles.locationOptionText}>{loc.label}</Text>
+                </TouchableOpacity>
+              ))}
+
+              {locationSearchText.length > 0 && remoteResults.length === 0 && (
+                <Text style={{ textAlign: 'center', color: theme.textSecondary, padding: 20, fontSize: 13 }}>
+                  Can't find your neighborhood? Press 'Search' above.
+                </Text>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -1098,6 +1208,24 @@ const createStyles = (theme: ThemeColors) =>
       fontWeight: "800",
       textAlign: "center",
       marginBottom: 6
+    },
+
+    modalSearchContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: theme.background,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: theme.cardBorder,
+        height: 44,
+    },
+    modalSearchInput: {
+        flex: 1,
+        color: theme.textPrimary,
+        fontSize: 15,
+        marginLeft: 10,
     },
     badgeDesc: {
       fontSize: 12,

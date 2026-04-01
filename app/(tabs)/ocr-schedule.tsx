@@ -4,6 +4,7 @@ import * as ImagePicker from "expo-image-picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
+  Alert,
   Modal,
   Platform,
   SafeAreaView,
@@ -76,7 +77,6 @@ export default function OCRScheduleScreen() {
     (date as string) || null
   );
   const [userId, setUserId] = useState<string>("user-123");
-
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [newEntry, setNewEntry] = useState({
@@ -133,8 +133,9 @@ export default function OCRScheduleScreen() {
           setGlobalLoading(false);
         }
       };
+      setGlobalLoading(true);
       loadExistingSchedule();
-    }, []),
+    }, [activeTab, selectedDateFilter]),
   );
 
   const applyManualHours = () => {
@@ -149,6 +150,8 @@ export default function OCRScheduleScreen() {
     const newSlots: TimeSlot[] = [];
     const today = new Date();
 
+    let overlapCount = 0;
+
     for (let i = 1; i <= 5; i++) {
       const diff = i - today.getDay();
       for (let h = startInt; h < endInt; h++) {
@@ -158,10 +161,31 @@ export default function OCRScheduleScreen() {
         const endDate = new Date(startDate);
         endDate.setHours(h + 1, 0, 0, 0);
 
+        // Check against events
+        const hasOverlap = schedule.some((s: any) => {
+           if (s.source !== DataSource.EVENT || !s.startTime || !s.endTime) return false;
+           const st = new Date(s.startTime);
+           const et = new Date(s.endTime);
+           
+           const pad = (n: number) => n.toString().padStart(2, "0");
+           const sDateStr = `${st.getFullYear()}-${pad(st.getMonth() + 1)}-${pad(st.getDate())}`;
+           const targetDateStr = `${startDate.getFullYear()}-${pad(startDate.getMonth() + 1)}-${pad(startDate.getDate())}`;
+
+           return (
+              sDateStr === targetDateStr && 
+              st.getTime() < endDate.getTime() && 
+              et.getTime() > startDate.getTime()
+           );
+        });
+
+        if (hasOverlap) {
+            overlapCount++;
+        }
+
         newSlots.push(
           new TimeSlot(
             uuidv4(),
-            "user-123",
+            userId,
             startDate,
             endDate,
             BlockType.BUSY,
@@ -172,30 +196,62 @@ export default function OCRScheduleScreen() {
         );
       }
     }
+
+    if (overlapCount > 0) {
+       Alert.alert(
+          "Heads Up!", 
+          `You have ${overlapCount} event(s) scheduled during the work hours you're adding. Just letting you know!`,
+          [
+             { text: "OK, got it", onPress: () => {
+                 setSchedule([...schedule, ...newSlots]);
+                 setStep("calendar_view");
+                 showToast("Weekday work hours added!", "success");
+             }}
+          ]
+       );
+       return;
+    }
+
     setSchedule([...schedule, ...newSlots]);
     setStep("calendar_view");
     showToast("Weekday work hours added!", "success");
   };
 
   const getSlotForHour = (hourInt: number) => {
-    return schedule?.find((s: any) => {
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const today = new Date();
+    const diff = activeTab - today.getDay();
+    const activeDate = new Date(today);
+    activeDate.setDate(today.getDate() + diff);
+    const activeDateStr = `${activeDate.getFullYear()}-${pad(activeDate.getMonth() + 1)}-${pad(activeDate.getDate())}`;
+    const targetDateStr = selectedDateFilter ? selectedDateFilter : activeDateStr;
+
+    const [year, month, day] = targetDateStr.split("-").map(Number);
+    const targetHourStart = new Date(year, month - 1, day, hourInt, 0, 0);
+    const targetHourEnd = new Date(year, month - 1, day, hourInt + 1, 0, 0);
+
+    const matches = schedule?.filter((s: any) => {
       if (!s || !s.startTime || !s.endTime) return false;
-      const st = new Date(s.startTime);
-      const et = new Date(s.endTime);
+      let st = new Date(s.startTime);
+      let et = new Date(s.endTime);
 
-      const pad = (n: number) => n.toString().padStart(2, "0");
-      const localDateStr = `${st.getFullYear()}-${pad(st.getMonth() + 1)}-${pad(st.getDate())}`;
+      if (s.isRecurring) {
+        if (st.getDay() !== activeTab) return false;
+        st = new Date(year, month - 1, day, st.getHours(), st.getMinutes(), st.getSeconds());
+        et = new Date(year, month - 1, day, et.getHours(), et.getMinutes(), et.getSeconds());
+        if (et <= st) {
+          et.setDate(et.getDate() + 1);
+        }
+      }
 
-      const isDateMatch = s.isRecurring
-        ? st.getDay() === activeTab
-        : (selectedDateFilter && st.getDay() === activeTab ? localDateStr === selectedDateFilter : false);
-
-      return (
-        isDateMatch &&
-        st.getHours() <= hourInt &&
-        et.getHours() > hourInt
-      );
+      return st.getTime() < targetHourEnd.getTime() && et.getTime() > targetHourStart.getTime();
     });
+
+    if (!matches || matches.length === 0) return undefined;
+
+    // Prioritize Events over Manual/OCR schedules
+    const eventSlot = matches.find(m => m.source === DataSource.EVENT);
+    return eventSlot || matches[0];
   };
 
   const handleUpload = async () => {
@@ -286,6 +342,37 @@ export default function OCRScheduleScreen() {
         icon: newEntry.category.icon,
       },
     );
+
+    // Check for overlap with any existing EVENT
+    const overlappingEvent = schedule.find((s: any) => {
+      if (s.source !== DataSource.EVENT || !s.startTime || !s.endTime) return false;
+      const st = new Date(s.startTime);
+      const et = new Date(s.endTime);
+      
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const sDateStr = `${st.getFullYear()}-${pad(st.getMonth() + 1)}-${pad(st.getDate())}`;
+      const targetDateStr = `${startDate.getFullYear()}-${pad(startDate.getMonth() + 1)}-${pad(startDate.getDate())}`;
+
+      return (
+         sDateStr === targetDateStr && 
+         st.getTime() < endDate.getTime() && 
+         et.getTime() > startDate.getTime()
+      );
+    });
+
+    if (overlappingEvent) {
+      Alert.alert(
+        "Heads Up!",
+        `Just letting you know, you already have an event ("${overlappingEvent.metadata?.title || 'Unknown'}") scheduled at this exact time!`,
+        [
+          { text: "OK, got it", onPress: () => {
+              setSchedule([...schedule, newSlot]);
+              setIsAddModalVisible(false);
+          }}
+        ]
+      );
+      return; // Wait for user to click OK
+    }
 
     setSchedule([...schedule, newSlot]);
     setIsAddModalVisible(false);

@@ -58,18 +58,13 @@ export class EventController {
     /**
      * Starts EventBuilder and validates availability via conflictEngine.checkAvailability().
      */
-    public async createEvent(request: CreateEventDTO): Promise<ResponseEntity<Event | any>> {
+    public async createEvent(request: CreateEventDTO, forceCreate: boolean = false): Promise<ResponseEntity<Event | any>> {
         try {
             const user = await AuthManager.getInstance().getCurrentUser();
             if (!user) throw new Error("Authentication required");
 
-            if (request.time) {
+            if (request.time && !forceCreate) {
                 const eventDate = new Date(request.time);
-                if (eventDate <= new Date()) {
-                    throw new Error("Event time cannot be in the past.");
-                }
-
-                // --- Schedule overlap check ---
                 let endTime = new Date(eventDate.getTime());
                 if (request.duration) {
                     let minutes = 60;
@@ -85,32 +80,14 @@ export class EventController {
                     endTime.setHours(endTime.getHours() + 2);
                 }
 
-                try {
-                    const sClient = SupabaseClient.getInstance().client;
-                    
-                    const { data: userJoinedEvents } = await sClient.from('event_participants').select('event_id').eq('user_id', user?.id);
-                    const joinedEventIds = userJoinedEvents?.map((e: any) => e?.event_id) || [];
-                    
-                    const orCondition = `organizer_id.eq.${user?.id}` + (joinedEventIds.length > 0 ? `,id.in.(${joinedEventIds.join(',')})` : '');
-                    
-                    const { data: userEvents } = await sClient.from('events').select('id, start_time, end_time, title').or(orCondition);
-                    
-                    if (userEvents) {
-                        for (const userEvent of userEvents) {
-                            if (!userEvent?.start_time || !userEvent?.end_time) continue;
-                            const existingStart = new Date(userEvent.start_time);
-                            const existingEnd = new Date(userEvent.end_time);
-                            
-                            if (eventDate < existingEnd && endTime > existingStart) {
-                                throw new Error(`Schedule Conflict: You already have an event ("${userEvent?.title}") scheduled during this time.`);
-                            }
-                        }
-                    }
-                } catch (e: any) {
-                    if (e.message.includes("Schedule Conflict")) throw e;
-                    console.warn("Soft fail on schedule overlap check:", e);
+                const conflict = await this.checkScheduleConflict(user.id, eventDate, endTime);
+                if (conflict) {
+                    return { 
+                        status: 409, 
+                        message: `Schedule Conflict: You already have "${conflict}" scheduled during this time. Create anyway?`,
+                        data: { conflictingEvent: conflict }
+                    };
                 }
-                // --- End overlap check ---
             }
 
             const event = await this.eventManager.createEvent(user.id, request);
@@ -118,6 +95,68 @@ export class EventController {
         } catch (error: any) {
             return { status: 500, message: error.message || "Event creation failed" };
         }
+    }
+
+    private async checkScheduleConflict(userId: string, start: Date, end: Date, ignoreEventId?: string): Promise<string | null> {
+        const sClient = SupabaseClient.getInstance().client;
+        
+        // 1. Check other events (Hosted or Joined)
+        const { data: userJoinedEvents } = await sClient.from('event_participants').select('event_id').eq('user_id', userId);
+        const joinedEventIds = userJoinedEvents?.map((e: any) => e.event_id) || [];
+        const orCondition = `organizer_id.eq.${userId}` + (joinedEventIds.length > 0 ? `,id.in.(${joinedEventIds.join(',')})` : '');
+        
+        const { data: userEvents } = await sClient.from('events').select('id, start_time, end_time, title').or(orCondition);
+        if (userEvents) {
+            for (const e of userEvents) {
+                if (ignoreEventId && e.id === ignoreEventId) continue;
+                const eStart = new Date(e.start_time);
+                const eEnd = new Date(e.end_time);
+                if (start < eEnd && end > eStart) return e.title;
+            }
+        }
+
+        // 2. Check Schedule Table (OCR Classes / Manual Busy Blocks)
+        const { data: scheduleBlocks } = await sClient.from('schedule').select('*').eq('user_id', userId).eq('is_busy', true);
+        if (scheduleBlocks) {
+            const dayOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][start.getDay()];
+            
+            for (const block of scheduleBlocks) {
+                let blockDateForCompare = new Date(start);
+
+                // If specific_date exists, it must match
+                if (block.specific_date) {
+                    const bDate = new Date(block.specific_date);
+                    const sDate = new Date(start);
+                    if (bDate.getFullYear() !== sDate.getFullYear() || bDate.getMonth() !== sDate.getMonth() || bDate.getDate() !== sDate.getDate()) continue;
+                    blockDateForCompare = bDate;
+                } else {
+                    // Recurring block: must match day of week
+                    if (block.day_of_week !== dayOfWeek) continue;
+                }
+
+                // Check time overlap securely by mapping to the actual event day
+                const [bSH, bSM] = block.start_time.split(':').map(Number);
+                const [bEH, bEM] = block.end_time.split(':').map(Number);
+                
+                const blockStartDate = new Date(blockDateForCompare);
+                blockStartDate.setHours(bSH, bSM, 0, 0);
+                
+                const blockEndDate = new Date(blockDateForCompare);
+                blockEndDate.setHours(bEH, bEM, 0, 0);
+                
+                // If it crosses midnight, end time is on the next day
+                if (blockEndDate < blockStartDate) {
+                    blockEndDate.setDate(blockEndDate.getDate() + 1);
+                }
+
+                // Standard overlap formula
+                if (start.getTime() < blockEndDate.getTime() && end.getTime() > blockStartDate.getTime()) {
+                    return block.title || block.label || "Busy Block";
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -142,7 +181,7 @@ export class EventController {
     /**
      * Adds participant; returns error if capacity is full.
      */
-    public async joinEvent(eventId: string): Promise<ResponseEntity> {
+    public async joinEvent(eventId: string, forceJoin: boolean = false): Promise<ResponseEntity> {
         try {
             const user = await AuthManager.getInstance().getCurrentUser();
             if (!user) throw new Error("Authentication required");
@@ -159,25 +198,15 @@ export class EventController {
             const eventDate = new Date(targetEvent.start_time);
             const endTime = new Date(targetEvent.end_time);
 
-            // 2. Fetch user's current schedule to check overlap
-            const { data: userJoinedEvents } = await sClient.from('event_participants').select('event_id').eq('user_id', user.id);
-            const joinedEventIds = userJoinedEvents?.map((e: any) => e.event_id) || [];
-            
-            const orCondition = `organizer_id.eq.${user.id}` + (joinedEventIds.length > 0 ? `,id.in.(${joinedEventIds.join(',')})` : '');
-            
-            const { data: userEvents } = await sClient.from('events').select('id, start_time, end_time, title').or(orCondition);
-            
-            if (userEvents) {
-                for (const userEvent of userEvents) {
-                    if (userEvent.id === eventId) continue;
-                    if (!userEvent.start_time || !userEvent.end_time) continue;
-                    
-                    const existingStart = new Date(userEvent.start_time);
-                    const existingEnd = new Date(userEvent.end_time);
-                    
-                    if (eventDate < existingEnd && endTime > existingStart) {
-                        throw new Error(`Schedule Conflict: You already have an event ("${userEvent.title}") scheduled during this time.`);
-                    }
+            // 2. Check overlap only if not force-joining
+            if (!forceJoin) {
+                const conflict = await this.checkScheduleConflict(user.id, eventDate, endTime, eventId);
+                if (conflict) {
+                    return { 
+                        status: 409, 
+                        message: `Schedule Conflict: You already have "${conflict}" scheduled during this time. Join anyway?`,
+                        data: { conflictingEvent: conflict }
+                    };
                 }
             }
 

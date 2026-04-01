@@ -39,6 +39,20 @@ export default function TabLayout() {
 
     const [inviteModalVisible, setInviteModalVisible] = useState(false);
     const [currentInvite, setCurrentInvite] = useState<any>(null);
+    const [eventDetails, setEventDetails] = useState<any>(null);
+
+    const fetchEventDetails = async (eventId: string) => {
+        try {
+            const { data } = await SupabaseClient.getInstance().client
+                .from('events')
+                .select('title, sub_category, start_time, location_name')
+                .eq('id', eventId)
+                .single();
+            setEventDetails(data);
+        } catch (e) {
+            console.error("Invite Modal: Details fetch failed", e);
+        }
+    };
 
     useEffect(() => {
         let channel: any;
@@ -48,7 +62,7 @@ export default function TabLayout() {
 
             const supabase = SupabaseClient.getInstance().client;
             
-            // Fetch overall unread notifications count
+            // ... (unread count fetch remains same)
             const { count } = await supabase
                 .from('notifications')
                 .select('*', { count: 'exact', head: true })
@@ -71,10 +85,11 @@ export default function TabLayout() {
 
             if (data && data.length > 0) {
                 setCurrentInvite(data[0]);
+                if (data[0].data?.eventId) fetchEventDetails(data[0].data.eventId);
                 setInviteModalVisible(true);
             }
 
-            // Realtime subscription for incoming notifications
+            // Realtime subscription
             channel = supabase
                 .channel('public:notifications:all')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload: any) => {
@@ -86,6 +101,7 @@ export default function TabLayout() {
 
                     if (newNotif.type === 'event_invite' && !newNotif.is_read) {
                         setCurrentInvite(newNotif);
+                        if (newNotif.data?.eventId) fetchEventDetails(newNotif.data.eventId);
                         setInviteModalVisible(true);
                     }
                 })
@@ -98,9 +114,14 @@ export default function TabLayout() {
         };
     }, []);
 
+    const handleInviteModalClose = () => {
+        setInviteModalVisible(false);
+        setEventDetails(null);
+    };
+
     const handleAcceptInvite = async () => {
         if (!currentInvite) return;
-        setInviteModalVisible(false);
+        handleInviteModalClose();
         const { showToast } = useUIStore.getState();
         try {
             const evController = new EventController(EventManager.getInstance(), {} as any, {} as any);
@@ -119,7 +140,7 @@ export default function TabLayout() {
 
     const handleRejectInvite = async () => {
         if (!currentInvite) return;
-        setInviteModalVisible(false);
+        handleInviteModalClose();
         try {
             const currentUser = await AuthManager.getInstance().getCurrentUser();
             const me = (await SupabaseClient.getInstance().client.from('users').select('full_name').eq('id', currentUser?.id).single()).data;
@@ -306,21 +327,49 @@ export default function TabLayout() {
 
         {/* Global Invite Modal */}
         <Modal visible={inviteModalVisible} animationType="slide" transparent={true}>
-            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
-                <View style={{ width: '85%', backgroundColor: theme.card, borderRadius: 24, padding: 24, alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 10 }}>
-                    <Ionicons name="mail-unread" size={48} color={theme.primary} style={{ marginBottom: 16 }} />
-                    <Text style={{ fontSize: 20, fontWeight: '800', color: theme.textPrimary, marginBottom: 8, textAlign: 'center' }}>
-                        {currentInvite?.title || 'Event Invite'}
-                    </Text>
-                    <Text style={{ fontSize: 16, color: theme.textSecondary, marginBottom: 24, textAlign: 'center' }}>
-                        {currentInvite?.body || 'You have been invited to an event!'}
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                <View style={{ width: '100%', backgroundColor: theme.card, borderRadius: 28, padding: 24, alignItems: 'center', elevation: 12, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 15, borderWidth: 1, borderColor: theme.cardBorder }}>
+                    <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+                        <Ionicons name="mail-open" size={32} color={theme.primary} />
+                    </View>
+                    
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: theme.textPrimary, marginBottom: 8, textAlign: 'center' }}>
+                        Event Invitation
                     </Text>
                     
+                    <Text style={{ fontSize: 15, color: theme.textSecondary, marginBottom: 24, textAlign: 'center', lineHeight: 22 }}>
+                        {currentInvite?.body || 'You have been invited to an event!'}
+                    </Text>
+
+                    {eventDetails && (
+                        <View style={{ width: '100%', backgroundColor: theme.background, borderRadius: 20, padding: 20, marginBottom: 28, borderWidth: 1, borderColor: theme.cardBorder }}>
+                            <Text style={{ color: theme.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 12 }}>{eventDetails.title}</Text>
+                            
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                                <Ionicons name="time-outline" size={18} color={theme.primary} style={{ marginRight: 8 }} />
+                                <Text style={{ color: theme.textSecondary, fontSize: 14, fontWeight: '600' }}>
+                                    {new Date(eventDetails.start_time).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                            </View>
+                            
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Ionicons name="location-outline" size={18} color={theme.primary} style={{ marginRight: 8 }} />
+                                <Text style={{ color: theme.textSecondary, fontSize: 14, fontWeight: '600' }}>{eventDetails.location_name || 'Location TBA'}</Text>
+                            </View>
+                        </View>
+                    )}
+                    
                     <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
-                        <TouchableOpacity style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: theme.cardBorder, alignItems: 'center' }} onPress={handleRejectInvite}>
+                        <TouchableOpacity 
+                            style={{ flex: 1, paddingVertical: 16, borderRadius: 16, backgroundColor: theme.background, alignItems: 'center', borderWidth: 1, borderColor: theme.cardBorder }} 
+                            onPress={handleRejectInvite}
+                        >
                             <Text style={{ color: theme.textSecondary, fontWeight: '700', fontSize: 16 }}>Decline</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: theme.primary, alignItems: 'center' }} onPress={handleAcceptInvite}>
+                        <TouchableOpacity 
+                            style={{ flex: 1, paddingVertical: 16, borderRadius: 16, backgroundColor: theme.primary, alignItems: 'center', shadowColor: theme.primary, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }} 
+                            onPress={handleAcceptInvite}
+                        >
                             <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Join Event</Text>
                         </TouchableOpacity>
                     </View>

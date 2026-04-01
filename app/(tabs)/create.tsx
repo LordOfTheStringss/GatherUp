@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
@@ -123,7 +123,6 @@ export default function CreateEventScreen() {
     const [capacity, setCapacity] = useState('10');
     const [isPrivate, setIsPrivate] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState<{ latitude: number, longitude: number } | null>(null);
-    const [conflictWarning, setConflictWarning] = useState<string | null>(null);
     const [locationSearchQuery, setLocationSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<{id: string; name: string; latitude: number; longitude: number; source: 'local' | 'remote'}[]>([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -286,12 +285,6 @@ export default function CreateEventScreen() {
         setShowTimePicker(false);
         if (selectedDate) {
             setDate(selectedDate);
-            // Simulating the conflict check
-            if (selectedDate.getHours() === 10) {
-                setConflictWarning('⚠️ Warning: You have a scheduled class around this time!');
-            } else {
-                setConflictWarning(null);
-            }
         }
     };
 
@@ -303,7 +296,7 @@ export default function CreateEventScreen() {
         return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     };
 
-    const handleManualCreate = async () => {
+    const handleManualCreate = async (forceCreate: boolean = false) => {
         if (!title || !category || !date || !selectedLocation) {
             showToast('Please fill all required fields including location.', 'error');
             return;
@@ -324,7 +317,20 @@ export default function CreateEventScreen() {
                 location_lat: selectedLocation.latitude,
                 location_lng: selectedLocation.longitude,
                 is_private: isPrivate
-            } as any);
+            } as any, forceCreate);
+
+            if (res.status === 409) {
+                setGlobalLoading(false);
+                Alert.alert(
+                    "Schedule Conflict",
+                    res.message || "You have a conflicting event or class. Create anyway?",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Yes, Create Anyway", style: "destructive", onPress: () => handleManualCreate(true) }
+                    ]
+                );
+                return;
+            }
 
             if (res.status === 500 || (res.status !== 201 && res.status !== 200)) {
                 showToast(res.message || 'Event creation failed', 'error');
@@ -452,7 +458,7 @@ export default function CreateEventScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    style={[styles.input, { flex: 1, justifyContent: 'center', borderColor: conflictWarning ? theme.danger : theme.inputBorder }]}
+                    style={[styles.input, { flex: 1, justifyContent: 'center' }]}
                     onPress={() => setShowTimePicker(true)}
                 >
                     <Text style={{ color: theme.textPrimary }}>{formatTime(date)}</Text>
@@ -498,11 +504,7 @@ export default function CreateEventScreen() {
                                     display="spinner"
                                     textColor={theme.textPrimary}
                                     onChange={(e, d) => {
-                                        if (d) {
-                                            setDate(d);
-                                            if (d.getHours() === 10) setConflictWarning('⚠️ Warning: You have a scheduled class around this time!');
-                                            else setConflictWarning(null);
-                                        }
+                                        if (d) setDate(d);
                                     }}
                                 />
                                 <TouchableOpacity onPress={() => setShowTimePicker(false)} style={styles.modalSubmitBtn}>
@@ -520,7 +522,6 @@ export default function CreateEventScreen() {
                     />
                 )
             )}
-            {conflictWarning ? <Text style={styles.errorText}>{conflictWarning}</Text> : null}
 
             {/* Category Picker Modal — Searchable Interest Tags */}
             <Modal visible={showCategoryPicker} transparent animationType="slide">
@@ -721,7 +722,7 @@ export default function CreateEventScreen() {
                 </View>
             </View>
 
-            <TouchableOpacity style={[styles.submitButton, conflictWarning ? styles.buttonDisabled : null]} onPress={handleManualCreate} disabled={!!conflictWarning}>
+            <TouchableOpacity style={styles.submitButton} onPress={() => handleManualCreate(false)}>
                 <Text style={styles.submitButtonText}>Create Event</Text>
             </TouchableOpacity>
         </View >

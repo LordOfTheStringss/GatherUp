@@ -6,6 +6,7 @@ import { BlockType, DataSource, TimeSlot } from "./TimeSlot";
 export class ScheduleManager {
   public toggleTimeSlot(
     schedule: TimeSlot[],
+    dateStr: string,
     dayIndex: number,
     hour: number,
     userId: string,
@@ -24,10 +25,8 @@ export class ScheduleManager {
         newSchedule.splice(existingIndex, 1);
       }
     } else {
-      const today = new Date();
-      const diff = dayIndex - today.getDay();
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() + diff);
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const startDate = new Date(year, month - 1, day);
       startDate.setHours(hour, 0, 0, 0);
 
       const endDate = new Date(startDate);
@@ -40,8 +39,7 @@ export class ScheduleManager {
         endDate,
         BlockType.FREE,
         DataSource.MANUAL,
-        true,
-        // DİKKAT: Burası İngilizce oldu
+        false, // FALSE: Manual toggles should ONLY be for that specific date in this context
         {
           title: "Available for Socializing",
           type: "Available",
@@ -101,9 +99,9 @@ export class ScheduleManager {
       const pad = (n: number) => n.toString().padStart(2, "0");
       const DAYS_MAP = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-      // Map busy blocks to DB format
+      // Map busy blocks to DB format (exclude EVENT-source slots — they're queried dynamically)
       const insertData = slots
-        .filter((slot) => slot.type === BlockType.BUSY)
+        .filter((slot) => slot.type === BlockType.BUSY && slot.source !== DataSource.EVENT)
         .map((slot) => {
           const start = new Date(slot.startTime);
           const end = new Date(slot.endTime);
@@ -115,7 +113,9 @@ export class ScheduleManager {
             end_time: `${pad(end.getHours())}:${pad(end.getMinutes())}:${pad(end.getSeconds())}`,
             is_busy: true,
             label: slot.metadata?.type || (slot.source === DataSource.OCR ? "Class" : "Busy"),
-            title: slot.metadata?.title || ""
+            title: slot.metadata?.title || "",
+            specific_date: slot.isRecurring ? null : `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+            source: slot.source
           };
         });
 
@@ -181,8 +181,9 @@ export class ScheduleManager {
       };
 
       return data.map((row: any) => {
-        // Stop dynamic offsetting. Revert to injecting literal local-time strings exactly like JSON native fetch.
-        const dateStr = BASE_DATES[row.day_of_week] || "2024-01-01";
+        // If it's a specific one-off event, use its actual date.
+        // Otherwise, use the base week 2024 for recurring weekly display.
+        const dateStr = row.specific_date || (BASE_DATES[row.day_of_week] || "2024-01-01");
         const start = new Date(`${dateStr}T${row.start_time}`);
         const end = new Date(`${dateStr}T${row.end_time}`);
 
@@ -218,8 +219,8 @@ export class ScheduleManager {
           start,
           end,
           row.is_busy ? BlockType.BUSY : BlockType.FREE,
-          DataSource.OCR,
-          true, // Assuming weekly recurring based on day_of_week
+          (row.source as DataSource) || DataSource.OCR,
+          row.specific_date ? false : true, // Only recurring if specific_date is NULL
           {
             title: row.title || row.label || "Event",
             type: row.label || "Event",

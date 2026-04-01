@@ -12,7 +12,7 @@ import { useTheme } from '../../src/theme/useTheme';
 export default function NotificationsScreen() {
     const theme = useTheme();
     const styles = createStyles(theme);
-    const { showToast } = useUIStore();
+    const { showToast, setGlobalLoading } = useUIStore();
     const [notifications, setNotifications] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -55,14 +55,79 @@ export default function NotificationsScreen() {
         loadNotifications();
     }, []);
 
+    const handleNotificationAction = async (notification: any, action: 'accept' | 'decline') => {
+        try {
+            setGlobalLoading(true);
+            const supabase = SupabaseClient.getInstance().client;
+            
+            if (notification.type === 'friend_request') {
+                const senderId = notification.data?.senderId;
+                if (!senderId) throw new Error("Missing sender data");
+
+                if (action === 'accept') {
+                    const { FriendshipManager } = await import('../../src/core/identity/FriendshipManager');
+                    const friendshipManager = FriendshipManager.getInstance();
+                    const user = await AuthManager.getInstance().getCurrentUser();
+                    if (!user) return;
+                    
+                    await friendshipManager.acceptRequest(user.id, senderId);
+                    showToast("Friend request accepted!", "success");
+                } else {
+                    showToast("Friend request declined", "info");
+                }
+            } else if (notification.type === 'event_invite') {
+                const eventId = notification.data?.eventId;
+                if (!eventId) throw new Error("Missing event data");
+
+                if (action === 'accept') {
+                    const { EventController } = await import('../../src/controllers/EventController');
+                    const { EventManager } = await import('../../src/core/event/EventManager');
+                    const { ConflictEngine } = await import('../../src/core/event/ConflictEngine');
+                    
+                    const evController = new EventController(
+                        EventManager.getInstance(), 
+                        {} as any, 
+                        new ConflictEngine()
+                    );
+                    
+                    const res = await evController.joinEvent(eventId, false);
+                    if (res.status === 200 || res.status === 201) {
+                        showToast("Joined event successfully!", "success");
+                    } else if (res.status === 409) {
+                        // Handle conflict by redirecting to event page or showing confirm
+                        setGlobalLoading(false);
+                        router.push({ pathname: "/event/[id]", params: { id: eventId } });
+                        return;
+                    } else {
+                        showToast(res.message || "Failed to join event", "error");
+                    }
+                } else {
+                    showToast("Invitation declined", "info");
+                    // Optionally notify organizer 
+                }
+            }
+
+            // Remove/Update notification locally after action
+            setNotifications(prev => prev.filter(n => n.id !== notification.id));
+            await supabase.from('notifications').delete().eq('id', notification.id);
+
+        } catch (error: any) {
+            showToast(error.message || "Action failed", "error");
+        } finally {
+            setGlobalLoading(false);
+        }
+    };
+
     const renderItem = ({ item }: { item: any }) => {
         const isRequest = item.type === 'friend_request';
+        const isInvite = item.type === 'event_invite';
+        const hasActions = isRequest || isInvite;
 
         return (
             <View style={[styles.notificationCard, !item.is_read && { backgroundColor: theme.primaryLight + '20' }]}>
                 <View style={[styles.iconContainer, !item.is_read && { backgroundColor: theme.primaryLight }]}>
                     <Ionicons
-                        name={isRequest ? "person-add" : "calendar"}
+                        name={isRequest ? "person-add" : (isInvite ? "mail-unread" : "calendar")}
                         size={24}
                         color={theme.primary}
                     />
@@ -70,6 +135,33 @@ export default function NotificationsScreen() {
                 <View style={styles.contentContainer}>
                     <Text style={[styles.title, !item.is_read && { fontWeight: '800' }]}>{item.title}</Text>
                     <Text style={styles.body}>{item.body}</Text>
+                    
+                    {hasActions && (
+                        <View style={styles.actionsRow}>
+                            <TouchableOpacity 
+                                style={[styles.actionBtn, { backgroundColor: theme.primary }]}
+                                onPress={() => handleNotificationAction(item, 'accept')}
+                            >
+                                <Text style={styles.actionText}>Accept</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.actionBtn, { backgroundColor: theme.cardBorder, borderWidth: 1, borderColor: theme.inputBorder }]}
+                                onPress={() => handleNotificationAction(item, 'decline')}
+                            >
+                                <Text style={[styles.actionText, { color: theme.textSecondary }]}>Decline</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+                    
+                    {isInvite && (
+                        <TouchableOpacity 
+                            style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center' }}
+                            onPress={() => router.push({ pathname: "/event/[id]", params: { id: item.data?.eventId } })}
+                        >
+                            <Text style={{ color: theme.primary, fontSize: 13, fontWeight: '600' }}>View Event Details</Text>
+                            <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+                        </TouchableOpacity>
+                    )}
                 </View>
             </View>
         );
