@@ -177,16 +177,23 @@ export class AuthManager {
 
         const { data, error } = await this.supabaseClient.client
             .from('allowed_domains')
-            .select('domain')
-            .eq('domain', extractedDomain)
-            .single();
+            .select('domain');
 
-        if (error || !data) {
-            console.warn(`Registration blocked: Domain ${extractedDomain} is not in allowed_domains table.`);
+        if (error || !data || data.length === 0) {
+            console.warn(`Registration blocked: Could not fetch allowed_domains or table is empty.`);
             return false;
         }
 
-        return true;
+        const isAllowed = data.some((row: { domain: string }) => {
+            const allowed = row.domain.toLowerCase();
+            return extractedDomain === allowed || extractedDomain.endsWith(`.${allowed}`);
+        });
+
+        if (!isAllowed) {
+            console.warn(`Registration blocked: Domain '${extractedDomain}' does not match any allowed domain suffix.`);
+        }
+
+        return isAllowed;
     }
 
     public async logout(): Promise<void> {

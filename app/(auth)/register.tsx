@@ -137,7 +137,7 @@ export default function RegisterScreen() {
                         <View style={[styles.inputGroup, { flex: 1, marginLeft: 12 }]}>
                             <Text style={styles.label}>EMAIL (INSTITUTIONAL)</Text>
                             <View style={styles.inputWrapper}>
-                                <TextInput style={styles.input} placeholder="john@edu.tr" placeholderTextColor={theme.textSecondary} value={email} onChangeText={setEmail} autoCapitalize="none" />
+                                <TextInput style={styles.input} placeholder="john@university.edu.tr" placeholderTextColor={theme.textSecondary} value={email} onChangeText={setEmail} autoCapitalize="none" />
                             </View>
                         </View>
                     </View>
