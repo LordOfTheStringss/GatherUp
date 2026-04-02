@@ -98,7 +98,11 @@ export default function MapScreen() {
                             : { category: 'All' }
                     );
                     if (res.data) {
-                        const withLocation = res.data.filter((e: any) => e.location_lat && e.location_lng);
+                        const nowObj = new Date();
+                        const withLocation = res.data.filter((e: any) => 
+                            e.location_lat && e.location_lng && 
+                            new Date(e.end_time || e.start_time) >= nowObj
+                        );
                         setAllEvents(withLocation);
 
                         const eventIds = withLocation.map((e: any) => e.id);

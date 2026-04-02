@@ -121,7 +121,8 @@ export default function NotificationsScreen() {
     const renderItem = ({ item }: { item: any }) => {
         const isRequest = item.type === 'friend_request';
         const isInvite = item.type === 'event_invite';
-        const hasActions = isRequest || isInvite;
+        // Only show actions for event invites, NOT for friend requests per user request
+        const hasActions = isInvite;
 
         return (
             <View style={[styles.notificationCard, !item.is_read && { backgroundColor: theme.primaryLight + '20' }]}>

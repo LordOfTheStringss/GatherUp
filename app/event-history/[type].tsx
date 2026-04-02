@@ -56,7 +56,7 @@ export default function EventHistoryScreen() {
         >
             <View style={styles.eventIconContainer}>
                 <Ionicons 
-                    name={type === 'hosted' ? "mic-outline" : "ticket-outline"} 
+                    name={type === 'hosted' ? "location-outline" : "ticket-outline"} 
                     size={24} 
                     color={theme.primary} 
                 />

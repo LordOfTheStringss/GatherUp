@@ -144,9 +144,9 @@ export class EventManager {
             if (!eventMap.has(e.id)) eventMap.set(e.id, e);
         }
 
-        // 5. Filter out events that have already ended
-        const now = new Date().toISOString();
-        const activeEvents = Array.from(eventMap.values()).filter(e => e.end_time >= now);
+        // 5. Filter out events that have already ended using proper Date objects
+        const nowObj = new Date();
+        const activeEvents = Array.from(eventMap.values()).filter(e => new Date(e.end_time || e.start_time) >= nowObj);
 
         // 6. Fetch participant counts for all events
         const eventIds = activeEvents.map(e => e.id);

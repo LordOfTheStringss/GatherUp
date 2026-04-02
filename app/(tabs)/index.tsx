@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { router, useFocusEffect } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -19,6 +20,9 @@ import { ThemeColors } from "../../src/theme/colors";
 import { useTheme } from "../../src/theme/useTheme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { OnboardingTooltip } from "../../src/components/OnboardingTooltip";
+
+// Cache to prevent hitting rate limits when scrolling/refreshing for identical map locations
+const locationCache: Record<string, string> = {};
 
 // DI Stub
 const eventController = new EventController(
@@ -107,46 +111,75 @@ export default function HomeScreen() {
         });
       }
 
-      const mapEvents = (events: any[]) =>
-        events.map((e: any) => ({
-          id: e.id,
-          title: e.title,
-          category: e.sub_category,
-          time: e.start_time
-            ? new Date(e.start_time).toLocaleString("en-US", {
-                weekday: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : "TBD",
-          capacity: e.max_capacity || 0,
-          participantCount: e.participant_count || 0,
-          location: e.location_name || e.location_id || "Campus",
-          host: e.users?.full_name || "Anonymous",
-          organizer_id: e.organizer_id,
-          role: e._role,
-        }));
+      const mapEventsAsync = async (events: any[]) => {
+        return Promise.all(
+          events.map(async (e: any) => {
+            let locString = e.location_name || e.location_id;
+            
+            // If no explicit location name, try to reverse geocode the lat/lng
+            if (!locString && e.location_lat && e.location_lng) {
+              const cacheKey = `${e.location_lat},${e.location_lng}`;
+              if (locationCache[cacheKey]) {
+                locString = locationCache[cacheKey];
+              } else {
+                try {
+                  const res = await Location.reverseGeocodeAsync({ latitude: e.location_lat, longitude: e.location_lng });
+                  if (res && res.length > 0) {
+                    const addr = res[0];
+                    locString = addr.district || addr.subregion || addr.city || addr.region || "Map Location";
+                    locationCache[cacheKey] = locString;
+                  }
+                } catch (err) {
+                  locString = "Map Location";
+                }
+              }
+            }
+
+            return {
+              id: e.id,
+              title: e.title,
+              category: e.sub_category,
+              time: e.start_time
+                ? new Date(e.start_time).toLocaleString("en-US", {
+                    weekday: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "TBD",
+              capacity: e.max_capacity || 0,
+              participantCount: e.participant_count || 0,
+              location: locString || "Location TBD",
+              host: e.users?.full_name || "Anonymous",
+              organizer_id: e.organizer_id,
+              role: e._role,
+            };
+          })
+        );
+      };
+
+      const nowObj = new Date();
 
       if (nearbyRes.data) {
-        // Filter out my own events from nearby feed
-        const filteredOthers = user
-          ? nearbyRes.data.filter((e: any) => e.organizer_id !== user.id)
-          : nearbyRes.data;
-        const mappedOthers = mapEvents(filteredOthers);
+        // Filter out my own events from nearby feed AND ensure event hasn't expired
+        const filteredOthers = nearbyRes.data.filter((e: any) => 
+          (!user || e.organizer_id !== user.id) && 
+          (new Date(e.end_time || e.start_time) >= nowObj)
+        );
+        const mappedOthers = await mapEventsAsync(filteredOthers);
         setNearbyEvents(mappedOthers);
       }
       if (friendsRes.data) {
-        // Exclude the user's own events from the friends feed to keep it purely "friends' events"
-        const filteredFriends = user
-          ? friendsRes.data.filter((e: any) => e.organizer_id !== user.id)
-          : friendsRes.data;
-        setFriendsEvents(mapEvents(filteredFriends));
+        // Exclude the user's own events from the friends feed to keep it purely "friends' events" AND ensure not expired
+        const filteredFriends = friendsRes.data.filter((e: any) => 
+          (!user || e.organizer_id !== user.id) && 
+          (new Date(e.end_time || e.start_time) >= nowObj)
+        );
+        setFriendsEvents(await mapEventsAsync(filteredFriends));
       }
       if (myData) {
-        // Double check local filter for "my" feed just in case
-        const now = new Date().toISOString();
-        const activeMyEvents = myData.filter((e: any) => e.end_time >= now);
-        setMyEvents(mapEvents(activeMyEvents));
+        // Double check local filter for "my" feed using proper Date object
+        const activeMyEvents = myData.filter((e: any) => new Date(e.end_time || e.start_time) >= nowObj);
+        setMyEvents(await mapEventsAsync(activeMyEvents));
       }
     } catch (e) {
       showToast("Failed to load events", "error");
