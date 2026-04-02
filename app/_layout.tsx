@@ -6,6 +6,7 @@ import { Toast } from "../src/components/ui/Toast";
 import { AuthManager } from "../src/core/identity/AuthManager";
 import { SupabaseClient } from "../src/infra/SupabaseClient";
 import { useAuthStore } from "../src/store/authStore";
+import { AuthProvider, useAuth } from "../hooks/useAuth";
 
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -77,11 +78,37 @@ function RealtimeNotifications() {
 
 export default function RootLayout() {
     return (
+        <AuthProvider>
+            <RootContent />
+        </AuthProvider>
+    );
+}
+
+function RootContent() {
+    const { session, isLoading } = useAuth();
+
+    // Shield: If we are still checking auth status, show the global loading overlay
+    // This prevents any "flash" of protected content before the bouncer can kick out a banned user.
+    if (isLoading) {
+        return (
+            <>
+                <LoadingOverlay />
+                <Toast />
+            </>
+        );
+    }
+
+    return (
         <>
             <RealtimeNotifications />
-            <Stack>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack screenOptions={{ headerShown: false }}>
+                {session ? (
+                    // Authenticated & Bouncer-Checked Stack
+                    <Stack.Screen name="(tabs)" />
+                ) : (
+                    // Unauthenticated / Banned Layout
+                    <Stack.Screen name="(auth)" />
+                )}
             </Stack>
             <Toast />
             <LoadingOverlay />

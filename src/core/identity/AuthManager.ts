@@ -128,6 +128,27 @@ export class AuthManager {
         }
 
         if (data?.session) {
+            // STRICT BOUNCER: Check if user is banned immediately after sign-in
+            const { data: userProfile, error: statusError } = await this.supabaseClient.client
+                .from('users')
+                .select('status')
+                .eq('id', data.session.user.id)
+                .single();
+
+            if (userProfile?.status?.toLowerCase() === 'banned') {
+                await this.supabaseClient.client.auth.signOut();
+                
+                // Show notification before throwing
+                const { Alert } = await import('react-native');
+                Alert.alert(
+                    'Account Suspended',
+                    'Your account has been restricted by an administrator.',
+                    [{ text: 'OK' }]
+                );
+                
+                throw new Error("Your account has been suspended by an administrator.");
+            }
+
             this.sessionToken = data.session.access_token;
             // Optionally fetch and set currentUser here if needed
         }
