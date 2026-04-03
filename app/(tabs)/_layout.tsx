@@ -131,8 +131,8 @@ export default function TabLayout() {
             } else {
                 showToast("Could not join: " + res.message, "error");
             }
-            // Mark as read
-            await SupabaseClient.getInstance().client.from('notifications').update({ is_read: true }).eq('id', currentInvite.id);
+            // Delete notification securely
+            await SupabaseClient.getInstance().client.from('notifications').delete().eq('id', currentInvite.id);
         } catch (e) {
             console.error(e);
         }
@@ -150,8 +150,8 @@ export default function TabLayout() {
                 me?.full_name || 'Your friend',
                 currentInvite.title || 'Event'
             );
-            // Mark as read
-            await SupabaseClient.getInstance().client.from('notifications').update({ is_read: true }).eq('id', currentInvite.id);
+            // Delete notification securely
+            await SupabaseClient.getInstance().client.from('notifications').delete().eq('id', currentInvite.id);
         } catch (e) {
             console.error(e);
         }

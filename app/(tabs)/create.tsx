@@ -373,6 +373,18 @@ export default function CreateEventScreen() {
                 return;
             }
 
+            // Check if any selected friend is busy
+            const busyFriends = selectedFriends.filter((f: any) => f?.is_available === false || f?.status === 'busy');
+            if (busyFriends.length > 0) {
+                const names = busyFriends.map((f: any) => f?.full_name).join(', ');
+                Alert.alert(
+                    "Unavailable",
+                    `${names} is currently in busy mode and is too busy for a new event.`
+                );
+                setGlobalLoading(false);
+                return;
+            }
+
             // O anki userın kendisi (vector parse edilmiş hali) ve seçtiği arkadaşları
             const myVector = typeof currentUser.profile_vector === 'string' ? JSON.parse(currentUser.profile_vector) : currentUser.profile_vector;
             const currentUserWithVec = { ...currentUser, profileVector: myVector };
@@ -744,11 +756,11 @@ export default function CreateEventScreen() {
 
             <View style={styles.mockFriendList}>
                 {myFriends.length === 0 ? (
-                    <Text style={{ padding: 16, color: theme.textSecondary, textAlign: 'center' }}>You don't have any friends to include yet.</Text>
+                    <Text style={{ padding: 16, color: theme.textSecondary, textAlign: 'center' }}>You don&apos;t have any friends to include yet.</Text>
                 ) : (
                     myFriends?.map(friend => {
                         const isOnline = friend?.current_status === 'online';
-                        const isBusy = friend?.current_status === 'busy' || friend?.current_status === 'Class';
+                        const isBusy = friend?.is_available === false || friend?.status === 'busy';
                         const isSelected = selectedFriends.some(f => f?.id === friend?.id);
                         const isAiSuggested = aiSuggestedFriends.some(f => f?.id === friend?.id);
 
@@ -761,6 +773,13 @@ export default function CreateEventScreen() {
                                     isAiSuggested && { borderColor: '#8B5CF6', borderWidth: 1 }
                                 ]}
                                 onPress={() => {
+                                    if (isBusy) {
+                                        Alert.alert(
+                                            "Unavailable",
+                                            `${friend?.full_name || 'This user'} is currently in busy mode and is too busy for a new event.`
+                                        );
+                                        return;
+                                    }
                                     if (isSelected) {
                                         setSelectedFriends(prev => prev.filter((f: any) => f?.id !== friend?.id));
                                     } else {
@@ -768,7 +787,6 @@ export default function CreateEventScreen() {
                                     }
                                 }}
                                 activeOpacity={0.7}
-                                disabled={isBusy}
                             >
                                 <View style={[styles.friendAvatar, isBusy && { backgroundColor: theme.textSecondary }]}>
                                     <Text style={styles.friendInitial}>{friend?.full_name ? friend.full_name.charAt(0) : 'F'}</Text>

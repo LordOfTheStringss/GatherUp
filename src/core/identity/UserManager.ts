@@ -119,7 +119,7 @@ export class UserManager {
         }
     }
 
-    public async updateProfile(userId: string, data: { name?: string, bio?: string, interests?: string[], profilePhoto?: string, baseLocation?: string, status?: string }): Promise<void> {
+    public async updateProfile(userId: string, data: { name?: string, bio?: string, interests?: string[], profilePhoto?: string, baseLocation?: string, status?: string, isAvailable?: boolean }): Promise<void> {
         console.log("UserManager: updateProfile called for", userId, "with data:", JSON.stringify(data));
         const updateData: any = {};
         if (data.name) updateData.full_name = data.name;
@@ -139,6 +139,7 @@ export class UserManager {
         }
         if (data.baseLocation !== undefined) updateData.base_location = data.baseLocation;
         if (data.status) updateData.status = data.status;
+        if (data.isAvailable !== undefined) updateData.is_available = data.isAvailable;
 
         if (Object.keys(updateData).length === 0) {
             console.warn("UserManager: No update data provided");

@@ -12,6 +12,7 @@ export interface UpdateProfileDTO {
     profilePhoto?: string;
     baseLocation?: string;
     currentStatus?: 'available' | 'busy' | 'away';
+    isAvailable?: boolean;
 }
 
 export interface PublicProfileDTO {
@@ -115,7 +116,7 @@ export class UserController {
                         eventsHosted: eventsHosted || 0,
                         trustedCircleCount: friends ? friends.length : 0
                     },
-                    currentStatus: user.status || 'available'
+                    currentStatus: user.is_available === false ? 'busy' : 'available'
                 }
             };
         } catch (error: any) {
@@ -144,7 +145,8 @@ export class UserController {
                 interests: data.interests,
                 profilePhoto: data.profilePhoto,
                 baseLocation: data.baseLocation,
-                status: data.currentStatus
+                status: data.currentStatus,
+                isAvailable: data.isAvailable !== undefined ? data.isAvailable : (data.currentStatus === 'busy' ? false : data.currentStatus === 'available' ? true : undefined)
             });
             return { status: 200, message: "Profile Updated" };
         } catch (error: any) {

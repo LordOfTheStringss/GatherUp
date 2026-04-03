@@ -509,7 +509,7 @@ export default function ProfileScreen() {
               setIsAvailable(newStatus);
               try {
                 const controller = new UserController();
-                await controller.updateProfile(undefined, { currentStatus: newStatus ? 'available' : 'busy' });
+                await controller.updateProfile(undefined, { currentStatus: newStatus ? 'available' : 'busy', isAvailable: newStatus });
               } catch (e) {
                 console.error("Failed to update status:", e);
                 showToast("Failed to update status", "error");
