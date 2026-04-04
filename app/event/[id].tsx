@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, FlatList, KeyboardAvoidingView, ScrollView, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, FlatList, KeyboardAvoidingView, ScrollView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions } from 'react-native';
+import { ScreenHeader } from '../../src/components/ui/ScreenHeader';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useUIStore } from '../../src/store/uiStore';
 import { getColorForTag, getCategoryForTag } from '../../src/data/interestTags';
@@ -319,35 +320,32 @@ export default function EventDetailScreen() {
     // Loading state — show spinner until data is fetched
     if (isLoadingEvent) {
         return (
-            <SafeAreaView style={styles.safeArea}>
-                <Stack.Screen options={{ headerShown: false }} />
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <ActivityIndicator size="large" color={theme.primary} />
-                    <Text style={{ color: theme.textSecondary, marginTop: 16, fontSize: 16, fontWeight: '600' }}>Loading event...</Text>
-                </View>
-            </SafeAreaView>
+        <View style={styles.safeArea}>
+            <Stack.Screen options={{ headerShown: false }} />
+            <ScreenHeader 
+                title="Loading event..."
+                onLeftPress={() => router.back()}
+            />
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={theme.primary} />
+                <Text style={{ color: theme.textSecondary, marginTop: 16, fontSize: 16, fontWeight: '600' }}>Loading event...</Text>
+            </View>
+        </View>
         );
     }
 
     // If chat is open, show chat UI
     if (showChat && hasJoined) {
         return (
-            <SafeAreaView style={styles.safeArea}>
-                <Stack.Screen options={{ headerShown: false }} />
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-                    <View style={styles.header}>
-                        <TouchableOpacity onPress={() => setShowChat(false)} style={styles.backBtn}>
-                            <Ionicons name="arrow-back" size={28} color={theme.textPrimary} />
-                        </TouchableOpacity>
-                        <Text style={styles.headerTitle} numberOfLines={1}>{eventDetails?.title || 'Chat'}</Text>
-                        {isHost ? (
-                            <TouchableOpacity onPress={handleEndEvent} style={styles.endBtn}>
-                                <Text style={styles.endBtnText}>End</Text>
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={{ width: 60 }} />
-                        )}
-                    </View>
+        <View style={styles.safeArea}>
+            <Stack.Screen options={{ headerShown: false }} />
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+                <ScreenHeader 
+                    title={eventDetails?.title || 'Chat'}
+                    onLeftPress={() => setShowChat(false)}
+                    rightText={isHost ? "End" : undefined}
+                    onRightPress={isHost ? handleEndEvent : undefined}
+                />
 
                     {/* Participants */}
                     <View style={styles.participantsContainer}>
@@ -437,29 +435,20 @@ export default function EventDetailScreen() {
                         </View>
                     </View>
                 </Modal>
-            </SafeAreaView>
+            </View>
         );
     }
 
     // Info Screen (default view)
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <Stack.Screen options={{ headerShown: false }} />
-
-            {/* Header */}
-            <View style={[styles.header, { borderBottomWidth: 1, borderBottomColor: theme.cardBorder }]}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-                    <Ionicons name="arrow-back" size={26} color={theme.textPrimary} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Event Details</Text>
-                {isHost ? (
-                    <TouchableOpacity onPress={handleEndEvent} style={styles.endBtn}>
-                        <Text style={styles.endBtnText}>End</Text>
-                    </TouchableOpacity>
-                ) : (
-                    <View style={{ width: 60 }} />
-                )}
-            </View>
+    <View style={styles.safeArea}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <ScreenHeader 
+            title="Event Details"
+            onLeftPress={() => router.back()}
+            rightText={isHost ? "End" : undefined}
+            onRightPress={isHost ? handleEndEvent : undefined}
+        />
 
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
                 {/* Badge Awarding Modal removed for streamlined UX */}
@@ -635,25 +624,13 @@ export default function EventDetailScreen() {
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const createStyles = (theme: ThemeColors) => StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.background },
     container: { flex: 1 },
-
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingBottom: 16,
-        paddingTop: Platform.OS === 'android' ? 40 : 10,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.cardBorder,
-    },
-    backBtn: { minHeight: 44, justifyContent: 'center' },
     headerTitle: { color: theme.textPrimary, fontSize: 20, fontWeight: 'bold', flex: 1, textAlign: 'center' },
     endBtn: { backgroundColor: theme.danger, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
     endBtnText: { color: '#FFF', fontWeight: 'bold' },

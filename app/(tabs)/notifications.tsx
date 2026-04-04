@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { FlatList, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScreenHeader } from '../../src/components/ui/ScreenHeader';
 import { AuthManager } from '../../src/core/identity/AuthManager';
 import { NotificationService } from '../../src/infra/NotificationService';
 import { SupabaseClient } from '../../src/infra/SupabaseClient';
@@ -169,14 +170,11 @@ export default function NotificationsScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={28} color={theme.textPrimary} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Notifications</Text>
-                <View style={{ width: 28 }} />
-            </View>
+        <View style={styles.safeArea}>
+            <ScreenHeader 
+                title="Notifications"
+                onLeftPress={() => router.back()}
+            />
             <FlatList
                 data={notifications}
                 keyExtractor={item => item.id}
@@ -186,15 +184,13 @@ export default function NotificationsScreen() {
                     !loading ? <Text style={styles.emptyText}>No notifications yet.</Text> : null
                 }
             />
-        </SafeAreaView>
+        </View>
     );
 }
 
 const createStyles = (theme: ThemeColors) => StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.background },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'android' ? 40 : 10, paddingBottom: 16 },
     backBtn: { minHeight: 44, justifyContent: 'center' },
-    headerTitle: { fontSize: 22, fontWeight: '800', color: theme.textPrimary, letterSpacing: 0.5 },
     listContainer: { padding: 20 },
     notificationCard: { flexDirection: 'row', backgroundColor: theme.card, padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: theme.cardBorder },
     iconContainer: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.primaryLight, justifyContent: 'center', alignItems: 'center', marginRight: 16 },

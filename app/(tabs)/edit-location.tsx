@@ -1,16 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView } from 'react-native';
 import { UserController } from '../../src/controllers/UserController';
 import { AuthManager } from '../../src/core/identity/AuthManager';
-import { FriendshipManager } from '../../src/core/identity/FriendshipManager';
-import { GamificationManager } from '../../src/core/identity/GamificationManager';
-import { UserManager } from '../../src/core/identity/UserManager';
-import { ANKARA_NEIGHBORHOODS, LocationData } from '../../src/data/locations';
 import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
 import { useTheme } from '../../src/theme/useTheme';
+import { ScreenHeader } from '../../src/components/ui/ScreenHeader';
+import { ANKARA_NEIGHBORHOODS, LocationData } from '../../src/data/locations';
 
 const userController = new UserController();
 
@@ -76,15 +74,12 @@ export default function EditLocationScreen() {
     }
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} disabled={saving}>
-                    <Ionicons name="close" size={28} color={theme.textPrimary} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Event Location</Text>
-                <View style={{ width: 28 }} />
-            </View>
-
+        <View style={styles.safeArea}>
+            <ScreenHeader 
+                title="Event Location"
+                onLeftPress={() => router.navigate("/(tabs)/profile")}
+                leftIcon="close"
+            />
             <View style={styles.container}>
                 <Text style={styles.description}>
                     Choose your primary neighborhood. This helps us find events and people near you!
@@ -139,23 +134,12 @@ export default function EditLocationScreen() {
                     }}
                 />
             </View>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const createStyles = (theme: ThemeColors) => StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.background },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 24,
-        paddingTop: 16,
-        paddingBottom: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.cardBorder
-    },
-    headerTitle: { fontSize: 18, fontWeight: '700', color: theme.textPrimary },
     container: { flex: 1, paddingHorizontal: 24, paddingTop: 16 },
     searchContainer: {
         flexDirection: 'row',

@@ -3,7 +3,6 @@ import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
 import { useUIStore } from "../../src/store/uiStore";
 import { ThemeColors } from "../../src/theme/colors";
 import { useTheme } from "../../src/theme/useTheme";
+import { ScreenHeader } from "../../src/components/ui/ScreenHeader";
 
 // DİKKAT: 54 MADDELİK TAM LİSTE BURAYA DA EKLENDİ!
 const INTEREST_CATEGORIES = [
@@ -162,7 +162,7 @@ export default function EditInterestsScreen() {
       await controller.updateProfile(undefined, { interests: selected });
       showToast("Interests updated!", "success");
 
-      router.replace("/profile");
+      router.navigate("/(tabs)/profile");
     } catch (e) {
       showToast("Failed to save.", "error");
     } finally {
@@ -172,29 +172,18 @@ export default function EditInterestsScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView
-        style={[
-          styles.safeArea,
-          { justifyContent: "center", alignItems: "center" },
-        ]}
-      >
+      <View style={styles.safeArea}>
         <ActivityIndicator size="large" color={theme.primary} />
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.replace("/profile")}
-          style={styles.backBtn}
-        >
-          <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Interests</Text>
-        <View style={{ width: 28 }} />
-      </View>
+    <View style={styles.safeArea}>
+      <ScreenHeader 
+        title="Edit Interests"
+        onLeftPress={() => router.navigate("/(tabs)/profile")}
+      />
 
       <View style={styles.topBar}>
         <Text style={styles.subtitle}>Selected: {selected.length}</Text>
@@ -253,29 +242,13 @@ export default function EditInterestsScreen() {
           <Text style={styles.saveBtnText}>Save Changes</Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const createStyles = (theme: ThemeColors) =>
   StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.background },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 20,
-      paddingTop: 10,
-      paddingBottom: 16,
-    },
-    backBtn: { minHeight: 44, justifyContent: "center" },
-    headerTitle: {
-      fontSize: 20,
-      fontWeight: "800",
-      color: theme.textPrimary,
-      letterSpacing: 0.5,
-    },
-
     topBar: { paddingHorizontal: 24, paddingBottom: 16 },
     subtitle: { fontSize: 14, color: theme.textSecondary, fontWeight: "600" },
 

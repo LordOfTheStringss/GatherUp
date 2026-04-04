@@ -7,7 +7,7 @@ import {
   Alert,
   Modal,
   Platform,
-  SafeAreaView,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,6 +27,7 @@ import {
 import { useUIStore } from "../../src/store/uiStore";
 import { ThemeColors } from "../../src/theme/colors";
 import { useTheme } from "../../src/theme/useTheme";
+import { ScreenHeader } from "../../src/components/ui/ScreenHeader";
 
 const scheduleController = new ScheduleController(
   new ScheduleManager(),
@@ -408,19 +409,13 @@ export default function OCRScheduleScreen() {
 
   if (step === "type_select") {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => setStep("calendar_view")}
-            style={styles.backBtn}
-          >
-            <Ionicons name="close" size={28} color={theme.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Add Schedule</Text>
-          <View style={{ width: 28 }} />
-        </View>
+      <View style={styles.safeArea}>
+        <ScreenHeader 
+          title="Add Schedule"
+          onLeftPress={() => setStep("calendar_view")}
+          leftIcon="close"
+        />
         <ScrollView contentContainerStyle={styles.content}>
-          {/* DİKKAT: TASARIM İLK EKRAN (ONBOARDING) İLE AYNI HALE GETİRİLDİ */}
           <TouchableOpacity style={styles.typeButton} onPress={handleUpload}>
             <View style={styles.typeIconContainer}>
               <Text style={{ fontSize: 24 }}>🎓</Text>
@@ -456,25 +451,18 @@ export default function OCRScheduleScreen() {
             />
           </TouchableOpacity>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (step === "upload" || step === "manual_time") {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => setStep("type_select")}
-            style={styles.backBtn}
-          >
-            <Ionicons name="arrow-back" size={28} color={theme.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>
-            {step === "upload" ? "Plan Schedule" : "Working Hours"}
-          </Text>
-          <View style={{ width: 28 }} />
-        </View>
+      <View style={styles.safeArea}>
+        <ScreenHeader 
+          title={step === "upload" ? "Plan Schedule" : "Working Hours"}
+          onLeftPress={() => setStep("type_select")}
+          leftIcon="arrow-back"
+        />
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.subtitle}>
             {step === "upload"
@@ -579,28 +567,22 @@ export default function OCRScheduleScreen() {
             </TouchableOpacity>
           )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            setSchedule([]);
-            setStep("type_select");
-          }}
-          style={{ flexDirection: "row", alignItems: "center" }}
-        >
-          <Ionicons name="refresh-outline" size={24} color={theme.primary} />
-          <Text style={{ color: theme.primary, marginLeft: 4, fontWeight: "600", fontSize: 14 }}>Reset</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Schedule</Text>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="close" size={28} color={theme.textSecondary} />
-        </TouchableOpacity>
-      </View>
+    <View style={styles.safeArea}>
+      <ScreenHeader 
+        title="Edit Schedule"
+        onLeftPress={() => router.navigate("/(tabs)/profile")}
+        leftIcon="close"
+        rightIcon="refresh-outline"
+        onRightPress={() => {
+          setSchedule([]);
+          setStep("type_select");
+        }}
+      />
 
       <View style={styles.tabsContainer}>
         {DAYS.map((day) => (
@@ -867,25 +849,14 @@ export default function OCRScheduleScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const createStyles = (theme: ThemeColors) =>
   StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.background },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 20,
-      paddingTop: 10,
-      paddingBottom: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.cardBorder,
-    },
-    backBtn: { minHeight: 44, justifyContent: "center" },
-    headerTitle: { fontSize: 18, fontWeight: "800", color: theme.textPrimary },
+    container: { flex: 1 },
     content: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
     typeButton: {
       backgroundColor: theme.card,

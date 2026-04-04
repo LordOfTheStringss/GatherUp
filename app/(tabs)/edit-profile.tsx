@@ -3,7 +3,6 @@ import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
@@ -16,6 +15,7 @@ import { useAuthStore } from "../../src/store/authStore";
 import { useUIStore } from "../../src/store/uiStore";
 import { useTheme } from "../../src/theme/useTheme";
 import { ThemeColors } from "../../src/theme/colors";
+import { ScreenHeader } from "../../src/components/ui/ScreenHeader";
 
 export default function EditProfileScreen() {
   const theme = useTheme();
@@ -102,7 +102,7 @@ export default function EditProfileScreen() {
       showToast("Profile details saved.", "success");
 
       // DİKKAT: Ana ekrana atmaması için rotayı kesin olarak Profil sekmesine yönlendirdik!
-      router.replace("/profile");
+      router.navigate("/(tabs)/profile");
     } catch (error) {
       setGlobalLoading(false);
       showToast("Failed to save profile.", "error");
@@ -110,15 +110,11 @@ export default function EditProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={28} color="#FFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Profile</Text>
-        <View style={{ width: 28 }} />
-      </View>
+    <View style={styles.safeArea}>
+      <ScreenHeader 
+        title="Edit Profile"
+        onLeftPress={() => router.navigate("/(tabs)/profile")}
+      />
 
       <ScrollView contentContainerStyle={styles.container}>
         {/* Profile Picture Section */}
@@ -184,29 +180,12 @@ export default function EditProfileScreen() {
           <Text style={styles.saveBtnText}>Save Changes</Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const createStyles = (theme: ThemeColors) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.background },
-
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 16,
-  },
-  backBtn: { minHeight: 44, justifyContent: "center" },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: theme.textPrimary,
-    flex: 1,
-  },
-
   container: { padding: 24, paddingBottom: 100 },
 
   imageSection: { alignItems: "center", marginBottom: 40 },

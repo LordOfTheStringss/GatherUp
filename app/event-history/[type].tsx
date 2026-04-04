@@ -3,13 +3,12 @@ import {
     View, 
     Text, 
     StyleSheet, 
-    SafeAreaView, 
-    ScrollView, 
     TouchableOpacity, 
     ActivityIndicator,
     StatusBar,
     FlatList
 } from 'react-native';
+import { ScreenHeader } from '../../src/components/ui/ScreenHeader';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/theme/useTheme';
@@ -88,22 +87,15 @@ export default function EventHistoryScreen() {
     const isDark = theme.background === '#0F0E17';
 
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
             <Stack.Screen options={{ headerShown: false }} />
             <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
             
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity 
-                    onPress={() => router.back()} 
-                    style={styles.backButton}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{getTitle()}</Text>
-                <View style={{ width: 44 }} />
-            </View>
+            <ScreenHeader 
+                title={getTitle()}
+                onLeftPress={() => router.navigate("/(tabs)/profile")}
+                leftIcon="arrow-back"
+            />
 
             {loading ? (
                 <View style={styles.centered}>
@@ -129,7 +121,7 @@ export default function EventHistoryScreen() {
                     }
                 />
             )}
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -137,25 +129,6 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: theme.background,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.cardBorder,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderRadius: 22,
-        backgroundColor: theme.card,
-        borderWidth: 1,
-        borderColor: theme.cardBorder,
     },
     headerTitle: {
         fontSize: 18,

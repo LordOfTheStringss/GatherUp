@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useEffect, useState } from "react";
 import { LoadingOverlay } from "../src/components/ui/LoadingOverlay";
 import { Toast } from "../src/components/ui/Toast";
@@ -80,9 +81,11 @@ function RealtimeNotifications() {
 
 export default function RootLayout() {
     return (
-        <AuthProvider>
-            <RootContent />
-        </AuthProvider>
+        <SafeAreaProvider>
+            <AuthProvider>
+                <RootContent />
+            </AuthProvider>
+        </SafeAreaProvider>
     );
 }
 
