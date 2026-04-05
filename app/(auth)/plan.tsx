@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { PremiumWheelPicker } from "../../src/components/ui/PremiumWheelPicker";
 import { v4 as uuidv4 } from "uuid";
 import { ScheduleController } from "../../src/controllers/ScheduleController";
 import { OCRProcessor } from "../../src/core/schedule/OCRProcessor";
@@ -383,34 +384,52 @@ export default function PlanTimeScreen() {
               </View>
 
               {(showStartPicker || showEndPicker) && (
-                <View style={styles.pickerContainer}>
-                  <View style={styles.pickerHeader}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowStartPicker(false);
-                        setShowEndPicker(false);
-                      }}
-                    >
-                      <Text style={styles.pickerCloseText}>Done</Text>
-                    </TouchableOpacity>
+                <Modal transparent animationType="slide">
+                  <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                      <Text style={styles.modalTitle}>
+                        Select {showStartPicker ? "Start" : "End"} Time
+                      </Text>
+                      {Platform.OS === 'ios' ? (
+                        <DateTimePicker
+                          value={showStartPicker ? workStart : workEnd}
+                          mode="time"
+                          is24Hour={true}
+                          display="spinner"
+                          textColor={theme.textPrimary}
+                          onChange={(event, date) => {
+                            if (date) {
+                              if (showStartPicker) setWorkStart(date);
+                              if (showEndPicker) setWorkEnd(date);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <PremiumWheelPicker
+                          mode="time"
+                          value={showStartPicker ? workStart : workEnd}
+                          onChange={(date) => {
+                            if (showStartPicker) setWorkStart(date);
+                            if (showEndPicker) setWorkEnd(date);
+                          }}
+                          onClose={() => {
+                            setShowStartPicker(false);
+                            setShowEndPicker(false);
+                          }}
+                        />
+                      )}
+                      <TouchableOpacity
+                        style={styles.modalSubmitBtn}
+                        onPress={() => {
+                          setShowStartPicker(false);
+                          setShowEndPicker(false);
+                        }}
+                      >
+                        <Text style={styles.modalSubmitText}>Confirm Time</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <DateTimePicker
-                    value={showStartPicker ? workStart : workEnd}
-                    mode="time"
-                    is24Hour={true}
-                    display="spinner"
-                    onChange={(event, date) => {
-                      if (Platform.OS === "android") {
-                        setShowStartPicker(false);
-                        setShowEndPicker(false);
-                      }
-                      if (date) {
-                        if (showStartPicker) setWorkStart(date);
-                        if (showEndPicker) setWorkEnd(date);
-                      }
-                    }}
-                  />
-                </View>
+                </Modal>
               )}
             </View>
           )}
@@ -934,16 +953,34 @@ const createStyles = (theme: ThemeColors) =>
     confirmBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-      justifyContent: "center",
-      padding: 20,
+      backgroundColor: "rgba(5, 5, 15, 0.85)",
+      justifyContent: "flex-end",
     },
     modalContent: {
-      backgroundColor: theme.card,
-      borderRadius: 24,
+      backgroundColor: "#1A1625",
       padding: 24,
-      borderWidth: 1,
-      borderColor: theme.cardBorder,
+      borderTopLeftRadius: 32,
+      borderTopRightRadius: 32,
+      borderTopWidth: 1,
+      borderTopColor: "rgba(255, 255, 255, 0.1)",
+    },
+    modalSubmitBtn: {
+      backgroundColor: "#7C3AED",
+      height: 56,
+      borderRadius: 16,
+      justifyContent: "center",
+      alignItems: "center",
+      marginTop: 32,
+      shadowColor: "#7C3AED",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      elevation: 8,
+    },
+    modalSubmitText: {
+      color: "#FFF",
+      fontSize: 18,
+      fontWeight: "800",
     },
     modalTopHeader: {
       flexDirection: "row",

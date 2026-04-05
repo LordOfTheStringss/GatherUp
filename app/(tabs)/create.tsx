@@ -4,6 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { PremiumWheelPicker } from '../../src/components/ui/PremiumWheelPicker';
 import * as Location from 'expo-location';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
@@ -478,10 +479,11 @@ export default function CreateEventScreen() {
             </View>
 
             {showDatePicker && (
-                Platform.OS === 'ios' ? (
-                    <Modal transparent animationType="slide">
-                        <View style={styles.modalOverlay}>
-                            <View style={styles.modalContent}>
+                <Modal transparent animationType="slide">
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <Text style={styles.modalTitle}>Select Date</Text>
+                            {Platform.OS === 'ios' ? (
                                 <DateTimePicker
                                     value={date}
                                     mode="date"
@@ -489,27 +491,28 @@ export default function CreateEventScreen() {
                                     textColor={theme.textPrimary}
                                     onChange={(e, d) => { if (d) setDate(d); }}
                                 />
-                                <TouchableOpacity onPress={() => setShowDatePicker(false)} style={styles.modalSubmitBtn}>
-                                    <Text style={styles.modalSubmitText}>Confirm Date</Text>
-                                </TouchableOpacity>
-                            </View>
+                            ) : (
+                                <PremiumWheelPicker
+                                    mode="date"
+                                    value={date}
+                                    onChange={(d) => setDate(d)}
+                                    onClose={() => setShowDatePicker(false)}
+                                />
+                            )}
+                            <TouchableOpacity onPress={() => setShowDatePicker(false)} style={styles.modalSubmitBtn}>
+                                <Text style={styles.modalSubmitText}>Confirm Date</Text>
+                            </TouchableOpacity>
                         </View>
-                    </Modal>
-                ) : (
-                    <DateTimePicker
-                        value={date}
-                        mode="date"
-                        display="default"
-                        onChange={onChangeDate}
-                    />
-                )
+                    </View>
+                </Modal>
             )}
 
             {showTimePicker && (
-                Platform.OS === 'ios' ? (
-                    <Modal transparent animationType="slide">
-                        <View style={styles.modalOverlay}>
-                            <View style={styles.modalContent}>
+                <Modal transparent animationType="slide">
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <Text style={styles.modalTitle}>Select Time</Text>
+                            {Platform.OS === 'ios' ? (
                                 <DateTimePicker
                                     value={date}
                                     mode="time"
@@ -519,20 +522,20 @@ export default function CreateEventScreen() {
                                         if (d) setDate(d);
                                     }}
                                 />
-                                <TouchableOpacity onPress={() => setShowTimePicker(false)} style={styles.modalSubmitBtn}>
-                                    <Text style={styles.modalSubmitText}>Confirm Time</Text>
-                                </TouchableOpacity>
-                            </View>
+                            ) : (
+                                <PremiumWheelPicker
+                                    mode="time"
+                                    value={date}
+                                    onChange={(d) => setDate(d)}
+                                    onClose={() => setShowTimePicker(false)}
+                                />
+                            )}
+                            <TouchableOpacity onPress={() => setShowTimePicker(false)} style={styles.modalSubmitBtn}>
+                                <Text style={styles.modalSubmitText}>Confirm Time</Text>
+                            </TouchableOpacity>
                         </View>
-                    </Modal>
-                ) : (
-                    <DateTimePicker
-                        value={date}
-                        mode="time"
-                        display="default"
-                        onChange={onChangeTime}
-                    />
-                )
+                    </View>
+                </Modal>
             )}
 
             {/* Category Picker Modal — Searchable Interest Tags */}
@@ -1010,10 +1013,11 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
     submitButtonText: { color: '#FFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
     buttonDisabled: { backgroundColor: theme.cardBorder, shadowOpacity: 0, elevation: 0 },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalContent: { backgroundColor: theme.card, padding: 24, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-    modalSubmitBtn: { backgroundColor: theme.primary, height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 16 },
-    modalSubmitText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(5, 5, 15, 0.85)', justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: '#1A1625', padding: 24, borderTopLeftRadius: 32, borderTopRightRadius: 32, borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.1)' },
+    modalTitle: { color: '#FFF', fontSize: 20, fontWeight: '800', marginBottom: 24, textAlign: 'center' },
+    modalSubmitBtn: { backgroundColor: '#7C3AED', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 32, shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 10, elevation: 8 },
+    modalSubmitText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
 
     modalBackdrop: { flex: 1, width: '100%' },
     modalContentList: { backgroundColor: theme.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 32, width: '100%' },
