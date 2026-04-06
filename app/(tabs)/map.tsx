@@ -1,19 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useRef, useState } from 'react';
 import { Dimensions, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AuthManager } from '../../src/core/identity/AuthManager';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
-import { useFocusEffect } from 'expo-router';
 import { EventController } from '../../src/controllers/EventController';
 import { EventManager } from '../../src/core/event/EventManager';
-import { useUIStore } from '../../src/store/uiStore';
+import { AuthManager } from '../../src/core/identity/AuthManager';
+import { CATEGORY_COLORS, getCategoryForTag, getColorForTag } from '../../src/data/interestTags';
 import { SupabaseClient } from '../../src/infra/SupabaseClient';
-import { getColorForTag, getCategoryForTag, CATEGORY_COLORS } from '../../src/data/interestTags';
-import { useTheme } from '../../src/theme/useTheme';
+import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
+import { useTheme } from '../../src/theme/useTheme';
 
 const eventController = new EventController(EventManager.getInstance(), {} as any, {} as any);
 
@@ -99,9 +98,11 @@ export default function MapScreen() {
                     );
                     if (res.data) {
                         const nowObj = new Date();
-                        const withLocation = res.data.filter((e: any) => 
-                            e.location_lat && e.location_lng && 
-                            new Date(e.end_time || e.start_time) >= nowObj
+                        const bannedUserId = process.env.EXPO_PUBLIC_BANNED_USER_ID;
+                        const withLocation = res.data.filter((e: any) =>
+                            e.location_lat && e.location_lng &&
+                            new Date(e.end_time || e.start_time) >= nowObj &&
+                            e.organizer_id !== bannedUserId
                         );
                         setAllEvents(withLocation);
 
@@ -175,7 +176,8 @@ export default function MapScreen() {
     const [showHeatmap, setShowHeatmap] = useState(false);
     const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
 
-    const getHeatmapData = () => {
+    const heatmapData = React.useMemo(() => {
+        if (!showHeatmap) return [];
         const heatmap: any[] = [];
         allEvents.forEach(evt => {
             const parentCat = getCategoryForTag(evt.sub_category);
@@ -203,9 +205,7 @@ export default function MapScreen() {
             }
         });
         return heatmap;
-    };
-
-    const heatmapData = getHeatmapData();
+    }, [allEvents, activeCategoryFilter, showHeatmap]);
 
     const getMarkerColor = (subCategory: string): string => {
         return getColorForTag(subCategory) || '#3B82F6';
