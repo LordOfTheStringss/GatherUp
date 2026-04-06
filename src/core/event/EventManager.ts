@@ -198,6 +198,11 @@ export class EventManager {
             query = query.eq('organizer_id', filter.organizerId);
         }
 
+        const bannedUserId = process.env.EXPO_PUBLIC_BANNED_USER_ID;
+        if (bannedUserId && filter.organizerId !== bannedUserId) {
+            query = query.neq('organizer_id', bannedUserId);
+        }
+
         if (filter.userId) {
             // Fetch accepted friends (mutual follows) to limit feed scope if friendsOnly=true
             const { data: whoFollowsMe } = await this.supabaseClient.client.from('friendships').select('user_id').eq('friend_id', filter.userId);
