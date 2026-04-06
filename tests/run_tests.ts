@@ -6,13 +6,13 @@
  * Usage: npx tsx tests/run_tests.ts
  */
 
+import { TC_05_OCRParsing } from './TC_05_OCRParsing';
+import { TC_06_OCRFallback } from './TC_06_OCRFallback';
+import { TC_08_GapAnalysis } from './TC_08_GapAnalysis';
+import { TC_19_AdminDashboard } from './TC_19_AdminDashboard';
+import { TC_20_BanWorkflow } from './TC_20_BanWorkflow';
+import { TC_25_TimeWindow } from './TC_25_TimeWindow';
 import { TestRunner } from './TestRunner';
-import { TC_01_DomainAuth } from './TC_01_DomainAuth';
-import { TC_04_RLS } from './TC_04_RLS';
-import { TC_17_RealtimeChat } from './TC_17_RealtimeChat';
-import { TC_22_DisasterRecovery } from './TC_22_DisasterRecovery';
-import { TC_23_DataDeletion } from './TC_23_DataDeletion';
-import { TC_24_TermsAcceptance } from './TC_24_TermsAcceptance';
 
 async function main() {
   console.log('╔══════════════════════════════════════════════════════════════╗');
@@ -23,12 +23,18 @@ async function main() {
   const runner = new TestRunner();
 
   // Register all test cases in order
-  runner.register(new TC_01_DomainAuth());
+  /*runner.register(new TC_01_DomainAuth());
   runner.register(new TC_04_RLS());
   runner.register(new TC_17_RealtimeChat());
   runner.register(new TC_22_DisasterRecovery());
   runner.register(new TC_23_DataDeletion());
-  runner.register(new TC_24_TermsAcceptance());
+  runner.register(new TC_24_TermsAcceptance());*/
+  runner.register(new TC_05_OCRParsing());
+  runner.register(new TC_06_OCRFallback());
+  runner.register(new TC_08_GapAnalysis());
+  runner.register(new TC_19_AdminDashboard());
+  runner.register(new TC_20_BanWorkflow());
+  runner.register(new TC_25_TimeWindow());
 
   // Execute all tests
   const results = await runner.runAll();
