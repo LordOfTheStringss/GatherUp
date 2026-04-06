@@ -712,10 +712,10 @@ export default function CreateEventScreen() {
                 {/* Zoom Controls */}
                 <View style={styles.zoomControls}>
                     <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom(true)} activeOpacity={0.7}>
-                        <Ionicons name="add" size={24} color="#FFF" />
+                        <Ionicons name="add" size={24} color={theme.textPrimary} />
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom(false)} activeOpacity={0.7}>
-                        <Ionicons name="remove" size={24} color="#FFF" />
+                        <Ionicons name="remove" size={24} color={theme.textPrimary} />
                     </TouchableOpacity>
                 </View>
             </View>

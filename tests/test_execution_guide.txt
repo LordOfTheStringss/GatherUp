@@ -1,0 +1,199 @@
+================================================================================
+                GatherUp — Test Execution Guide / Test Yürütme Rehberi
+================================================================================
+
+================================================================================
+PART 1: ENGLISH
+================================================================================
+
+1. PREREQUISITES
+-----------------
+- Node.js v18 or later installed
+- Project dependencies installed (npm install)
+- .env file present in project root with:
+    EXPO_PUBLIC_SUPABASE_URL=https://fevatnewdznbqquxasnd.supabase.co
+    EXPO_PUBLIC_SUPABASE_ANON_KEY=<your_anon_key>
+
+- Optional (for advanced admin tests):
+    SUPABASE_SERVICE_ROLE_KEY=<your_service_role_key>
+
+2. RUNNING ALL TESTS
+---------------------
+Open a terminal in the project root directory and run:
+
+    npx tsx tests/run_tests.ts
+
+This will:
+  a) Load environment variables from .env
+  b) Execute all 6 test cases sequentially (TC-01, TC-04, TC-17, TC-22, TC-23, TC-24)
+  c) Print real-time progress for each test
+  d) Display a formatted results table
+  e) Print detailed sub-test results
+  f) Exit with code 0 (all pass) or 1 (any failure)
+
+3. TEST CASES
+--------------
+
+  TC-01: Domain Auth Validation (Unit Testing)
+    - Verifies institutional email domain enforcement
+    - Checks allowed_domains table, validates matching logic
+    - Tests accept/reject for valid/invalid email domains
+
+  TC-04: RLS Enforcement (Integration Testing)
+    - Verifies Row Level Security on critical tables
+    - Tests unauthenticated INSERT/UPDATE are blocked
+    - Confirms private event schema and privacy controls
+
+  TC-17: Real-time Chat Security (Integration Testing)
+    - Verifies chat_messages schema and event-scoped isolation
+    - Tests RLS blocks unauthenticated message insertion
+    - Confirms SSL/TLS encryption on API endpoint
+    - Verifies Realtime channel initialization
+
+  TC-22: Disaster Recovery (System Testing)
+    - Verifies all 13 critical tables exist
+    - Validates column schemas on 8 key tables
+    - Confirms RLS active on security tables
+    - Measures verification time against 60-minute SLA
+
+  TC-23: Data Deletion / KVKK (Integration Testing)
+    - Verifies no raw image data stored in schedule table
+    - Confirms no continuous GPS tracking tables exist
+    - Validates OCR data stores only parsed structure
+    - Checks no persistent OCR image storage buckets
+
+  TC-24: Terms Acceptance (Unit Testing)
+    - Analyzes register.tsx for field validation logic
+    - Verifies AuthManager domain/age enforcement
+    - Confirms security exception classes exist
+    - Tests empty registration blocked at API level
+
+4. READING THE OUTPUT
+----------------------
+The output consists of three parts:
+
+  a) Progress Lines:
+     ▶ Running TC-01 — Domain auth validation... ✅ (7/7 sub-tests, 342ms)
+
+  b) Summary Table:
+     ╔═════════╦════════════════════╦══════════╦════════════╦═══════════╦══════════╗
+     ║ Test ID ║ Description        ║ Type     ║ Input(s)   ║ Expected  ║ Result   ║
+     ╠═════════╬════════════════════╬══════════╬════════════╬═══════════╬══════════╣
+     ║ TC-01   ║ Domain auth...     ║ Unit     ║ student@.. ║ Verific.. ║ ✅ PASS  ║
+     ╚═════════╩════════════════════╩══════════╩════════════╩═══════════╩══════════╝
+
+  c) Detailed Sub-Tests:
+     ✅ TC-01 — Domain auth validation (342ms)
+       ✓ Allowed domains table populated: Found 26 allowed domains
+       ✓ edu.tr domain allowed: edu.tr domains found...
+
+  Result meanings:
+    ✅ PASS    — All sub-tests passed
+    ⚠️ PARTIAL — Some sub-tests passed, some failed
+    ❌ FAIL    — All sub-tests failed or critical error
+
+5. TROUBLESHOOTING
+-------------------
+- "Missing EXPO_PUBLIC_SUPABASE_URL": Check .env file exists and has the correct keys
+- "tsx: command not found": Run `npx tsx` instead of `tsx` directly
+- Network errors: Ensure internet connectivity and Supabase project is active
+- RLS test failures: Some tests attempt unauthorized operations to VERIFY they are blocked.
+  A "blocked" result is EXPECTED and means security is working correctly.
+
+
+================================================================================
+PART 2: TÜRKÇE
+================================================================================
+
+1. ÖN KOŞULLAR
+-----------------
+- Node.js v18 veya üzeri kurulu olmalı
+- Proje bağımlılıkları yüklenmiş olmalı (npm install)
+- Proje kök dizininde .env dosyası bulunmalı:
+    EXPO_PUBLIC_SUPABASE_URL=https://fevatnewdznbqquxasnd.supabase.co
+    EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon_key>
+
+- İsteğe bağlı (admin testleri için):
+    SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
+
+2. TÜM TESTLERİ ÇALIŞTIRMA
+-----------------------------
+Proje kök dizininde terminal açın ve çalıştırın:
+
+    npx tsx tests/run_tests.ts
+
+Bu komut:
+  a) .env dosyasından ortam değişkenlerini yükler
+  b) 6 test senaryosunu sırayla çalıştırır (TC-01, TC-04, TC-17, TC-22, TC-23, TC-24)
+  c) Her test için gerçek zamanlı ilerleme gösterir
+  d) Biçimlendirilmiş sonuç tablosunu yazdırır
+  e) Ayrıntılı alt-test sonuçlarını gösterir
+  f) Tümü geçtiyse 0, herhangi biri başarısızsa 1 kodu ile çıkar
+
+3. TEST SENARYOLARI
+--------------------
+
+  TC-01: Domain Auth Doğrulaması (Birim Testi)
+    - Kurumsal e-posta alan adı kısıtlamasını doğrular
+    - allowed_domains tablosunu kontrol eder, eşleşme mantığını test eder
+    - Geçerli/geçersiz e-posta alan adları için kabul/red testi yapar
+
+  TC-04: RLS Uygulama (Entegrasyon Testi)
+    - Kritik tablolarda Satır Düzeyinde Güvenlik'i doğrular
+    - Kimlik doğrulamasız INSERT/UPDATE işlemlerinin engellendiğini test eder
+    - Özel etkinlik şeması ve gizlilik kontrollerini onaylar
+
+  TC-17: Gerçek Zamanlı Sohbet Güvenliği (Entegrasyon Testi)
+    - chat_messages şemasını ve etkinlik kapsamlı izolasyonu doğrular
+    - RLS'nin kimliksiz mesaj göndermeyi engellediğini test eder
+    - API uç noktasında SSL/TLS şifrelemeyi onaylar
+    - Realtime kanal başlatılmasını doğrular
+
+  TC-22: Felaket Kurtarma (Sistem Testi)
+    - 13 kritik tablonun varlığını doğrular
+    - 8 anahtar tabloda sütun şemalarını doğrular
+    - Güvenlik tablolarında RLS'nin aktif olduğunu onaylar
+    - Doğrulama süresini 60 dakikalık SLA'ya karşı ölçer
+
+  TC-23: Veri Silme / KVKK (Entegrasyon Testi)
+    - Schedule tablosunda ham görüntü verisi saklanmadığını doğrular
+    - Sürekli GPS izleme tablosu olmadığını onaylar
+    - OCR verilerinin yalnızca ayrıştırılmış yapıyı sakladığını doğrular
+    - Kalıcı OCR görüntü depolama bucket'ı olmadığını kontrol eder
+
+  TC-24: Şartların Kabulü (Birim Testi)
+    - register.tsx'i alan doğrulama mantığı açısından analiz eder
+    - AuthManager'da alan adı/yaş kısıtlamasını doğrular
+    - Güvenlik istisna sınıflarının var olduğunu onaylar
+    - API düzeyinde boş kaydın engellendiğini test eder
+
+4. ÇIKTIYI OKUMA
+-----------------
+Çıktı üç bölümden oluşur:
+
+  a) İlerleme Satırları:
+     ▶ TC-01 çalıştırılıyor — Domain auth doğrulaması... ✅ (7/7 alt-test, 342ms)
+
+  b) Özet Tablosu:
+     Tüm testlerin sonuçlarını gösteren biçimlendirilmiş tablo
+
+  c) Ayrıntılı Alt-Testler:
+     Her test senaryosunun her bir alt-testinin sonucu
+
+  Sonuç anlamları:
+    ✅ PASS    — Tüm alt-testler geçti
+    ⚠️ PARTIAL — Bazı alt-testler başarılı, bazıları başarısız
+    ❌ FAIL    — Tüm alt-testler başarısız veya kritik hata
+
+5. SORUN GİDERME
+------------------
+- "Missing EXPO_PUBLIC_SUPABASE_URL": .env dosyasının var olduğunu ve doğru anahtarları
+  içerdiğini kontrol edin
+- "tsx: command not found": Doğrudan tsx yerine `npx tsx` kullanın
+- Ağ hataları: İnternet bağlantısını ve Supabase projesinin aktif olduğunu kontrol edin
+- RLS test başarısızlıkları: Bazı testler, ENGELLENDİKLERİNİ doğrulamak için yetkisiz
+  işlemler dener. "Engellendi" sonucu BEKLENENDİR ve güvenliğin doğru çalıştığı anlamına gelir.
+
+================================================================================
+                              END OF GUIDE / REHBERİN SONU
+================================================================================

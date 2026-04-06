@@ -640,8 +640,8 @@ const createStyles = (theme: ThemeColors) =>
       borderColor: theme.cardBorder,
     },
     eventCardFriends: {
-      backgroundColor: theme.background,
-      borderColor: theme.primaryLight,
+      backgroundColor: theme.card,
+      borderColor: theme.cardBorder,
       padding: 20,
     },
     eventCardNearby: { backgroundColor: theme.card },

@@ -621,6 +621,7 @@ export default function ProfileScreen() {
 
           {/* Dinamik Tema Uyumlu Takvim (GERİ DÖNDÜ) */}
           <Calendar
+            key={themePreference}
             current={selectedDate}
             onDayPress={(day: any) => setSelectedDate(day.dateString)}
             firstDay={1}
@@ -633,6 +634,7 @@ export default function ProfileScreen() {
             }}
             theme={{
               calendarBackground: theme.card,
+              backgroundColor: theme.card,
               textSectionTitleColor: theme.textSecondary,
               selectedDayBackgroundColor: theme.primary,
               selectedDayTextColor: "#ffffff",
@@ -641,11 +643,12 @@ export default function ProfileScreen() {
               textDisabledColor: theme.cardBorder,
               monthTextColor: theme.textPrimary,
               arrowColor: theme.primary,
-              textDayFontWeight: "500",
+              textDayFontWeight: "600",
               textMonthFontWeight: "bold",
-              textDayHeaderFontWeight: "600",
-              textDayFontSize: 16,
+              textDayHeaderFontWeight: "700",
+              textDayFontSize: 14,
               textMonthFontSize: 18,
+              textDayHeaderFontSize: 12,
             }}
             style={styles.calendarStyle}
           />
@@ -1254,6 +1257,7 @@ const createStyles = (theme: ThemeColors) =>
       borderWidth: 1,
       borderColor: theme.cardBorder,
       marginBottom: 16,
+      backgroundColor: theme.card, // Ensure explicit background
     },
     selectedDayTitle: {
       fontSize: 16,

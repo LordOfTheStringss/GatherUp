@@ -143,14 +143,32 @@ export default function RegisterScreen() {
                     </View>
 
                     <InputGroup label="Password" icon="lock-closed-outline" theme={theme} styles={styles}>
-                        <TextInput style={styles.input} placeholder="••••••••" placeholderTextColor={theme.textSecondary} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} />
+                        <TextInput 
+                            style={styles.input} 
+                            placeholder="••••••••" 
+                            placeholderTextColor={theme.textSecondary} 
+                            value={password} 
+                            onChangeText={setPassword} 
+                            secureTextEntry={!showPassword}
+                            textContentType="oneTimeCode"
+                            importantForAutofill="no"
+                        />
                         <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
                             <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={theme.textSecondary} />
                         </TouchableOpacity>
                     </InputGroup>
 
                     <InputGroup label="Confirm Password" icon="checkmark-circle-outline" theme={theme} styles={styles}>
-                        <TextInput style={styles.input} placeholder="••••••••" placeholderTextColor={theme.textSecondary} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showPassword} />
+                        <TextInput 
+                            style={styles.input} 
+                            placeholder="••••••••" 
+                            placeholderTextColor={theme.textSecondary} 
+                            value={confirmPassword} 
+                            onChangeText={setConfirmPassword} 
+                            secureTextEntry={!showPassword}
+                            textContentType="oneTimeCode"
+                            importantForAutofill="no"
+                        />
                     </InputGroup>
 
                     <View style={styles.inputGroup}>
