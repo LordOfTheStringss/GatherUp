@@ -1,3 +1,4 @@
+import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
 import { SupabaseClient } from "../../infra/SupabaseClient";
 import { BlockType, DataSource, TimeSlot } from "./TimeSlot";
@@ -149,21 +150,14 @@ export class ScheduleManager {
     return this.saveScheduleBlocksToSupabase(schedule, userId);
   }
 
-  public async getScheduleFromDB(_userId: string): Promise<TimeSlot[]> {
+  public async getScheduleFromDB(userId: string): Promise<TimeSlot[]> {
     try {
       const sb = SupabaseClient.getInstance().client;
-
-      const { data: { user }, error: authError } = await sb.auth.getUser();
-      if (authError || !user) {
-        console.warn("User is not authenticated. Cannot fetch schedule.");
-        return []; // Gracefully handle unauthenticated load
-      }
-      const realUserId = user.id;
 
       const { data, error } = await sb
         .from("schedule")
         .select("*")
-        .eq("user_id", realUserId);
+        .eq("user_id", userId);
 
       if (error) {
         console.error("Supabase fetch error:", error);
@@ -172,69 +166,96 @@ export class ScheduleManager {
 
       if (!data) return [];
 
-      const BASE_DATES: Record<string, string> = {
-        "Sunday": "2024-01-07",
-        "Monday": "2024-01-01",
-        "Tuesday": "2024-01-02",
-        "Wednesday": "2024-01-03",
-        "Thursday": "2024-01-04",
-        "Friday": "2024-01-05",
-        "Saturday": "2024-01-06",
-      };
-
-      return data.map((row: any) => {
-        // If it's a specific one-off event, use its actual date.
-        // Otherwise, use the base week 2024 for recurring weekly display.
-        const dateStr = row.specific_date || (BASE_DATES[row.day_of_week] || "2024-01-01");
-        const start = new Date(`${dateStr}T${row.start_time}`);
-        const end = new Date(`${dateStr}T${row.end_time}`);
-
-        // If end time crosses midnight (like 23:00 to 02:00), push the end to the next day
-        if (end < start) {
-            end.setDate(end.getDate() + 1);
-        }
-
-        const CATEGORIES_COLOR_MAP: Record<string, string> = {
-          "Class": "#E11D48",
-          "Work": "#F59E0B",
-          "Sports": "#3B82F6",
-          "Tech": "#8B5CF6",
-          "Art": "#EC4899",
-          "Hobby": "#8910b9",
-          "Social": "#10B981",
-          "Available": "#32b910ff"
-        };
-        const CATEGORIES_ICON_MAP: Record<string, string> = {
-          "Class": "book",
-          "Work": "briefcase",
-          "Sports": "fitness",
-          "Tech": "code-working",
-          "Art": "color-palette",
-          "Hobby": "heart",
-          "Social": "people",
-          "Available": "checkmark-circle",
-        };
-
-        return new TimeSlot(
-          row.id || uuidv4(),
-          row.user_id,
-          start,
-          end,
-          row.is_busy ? BlockType.BUSY : BlockType.FREE,
-          (row.source as DataSource) || DataSource.OCR,
-          row.specific_date ? false : true, // Only recurring if specific_date is NULL
-          {
-            title: row.title || row.label || "Event",
-            type: row.label || "Event",
-            color: CATEGORIES_COLOR_MAP[row.label] || "#818CF8",
-            icon: CATEGORIES_ICON_MAP[row.label] || "calendar-outline"
-          }
-        );
-      });
+      return this.mapRowsToSlots(data);
     } catch (e) {
       console.error("Supabase Load error:", e);
       return [];
     }
+  }
+
+  public async getBulkSchedules(userIds: string[]): Promise<Record<string, TimeSlot[]>> {
+    try {
+      const sb = SupabaseClient.getInstance().client;
+      // Defensive check: filter out invalid or undefined userIds
+      const validIds = userIds.filter(id => id && id !== 'undefined' && id.length > 0);
+      
+      if (validIds.length === 0) {
+        console.warn("getBulkSchedules: No valid userIds provided.");
+        return {};
+      }
+
+      const { data, error } = await sb
+        .from("schedule")
+        .select("*")
+        .in("user_id", validIds);
+
+      if (error) {
+        console.error("Bulk fetch error:", error);
+        return {};
+      }
+
+      const grouped: Record<string, any[]> = {};
+      data.forEach((row: any) => {
+        if (!grouped[row.user_id]) grouped[row.user_id] = [];
+        grouped[row.user_id].push(row);
+      });
+
+      const result: Record<string, TimeSlot[]> = {};
+      for (const [uid, rows] of Object.entries(grouped)) {
+        result[uid] = this.mapRowsToSlots(rows);
+      }
+      return result;
+    } catch (e) {
+      console.error("Bulk schedules load error:", e);
+      return {};
+    }
+  }
+
+  private mapRowsToSlots(data: any[]): TimeSlot[] {
+    const BASE_DATES: Record<string, string> = {
+      "Sunday": "2024-01-07",
+      "Monday": "2024-01-01",
+      "Tuesday": "2024-01-02",
+      "Wednesday": "2024-01-03",
+      "Thursday": "2024-01-04",
+      "Friday": "2024-01-05",
+      "Saturday": "2024-01-06",
+    };
+
+    return data.map((row: any) => {
+      const dateStr = row.specific_date || (BASE_DATES[row.day_of_week] || "2024-01-01");
+      const start = new Date(`${dateStr}T${row.start_time}`);
+      const end = new Date(`${dateStr}T${row.end_time}`);
+
+      if (end < start) {
+        end.setDate(end.getDate() + 1);
+      }
+
+      const CATEGORIES_COLOR_MAP: Record<string, string> = {
+        "Class": "#E11D48", "Work": "#F59E0B", "Sports": "#3B82F6", "Tech": "#8B5CF6",
+        "Art": "#EC4899", "Hobby": "#8910b9", "Social": "#10B981", "Available": "#32b910ff"
+      };
+      const CATEGORIES_ICON_MAP: Record<string, string> = {
+        "Class": "book", "Work": "briefcase", "Sports": "fitness", "Tech": "code-working",
+        "Art": "color-palette", "Hobby": "heart", "Social": "people", "Available": "checkmark-circle",
+      };
+
+      return new TimeSlot(
+        row.id || uuidv4(),
+        row.user_id,
+        start,
+        end,
+        row.is_busy ? BlockType.BUSY : BlockType.FREE,
+        (row.source as DataSource) || DataSource.OCR,
+        row.specific_date ? false : true,
+        {
+          title: row.title || row.label || "Event",
+          type: row.label || "Event",
+          color: CATEGORIES_COLOR_MAP[row.label] || "#818CF8",
+          icon: CATEGORIES_ICON_MAP[row.label] || "calendar-outline"
+        }
+      );
+    });
   }
 
   /**

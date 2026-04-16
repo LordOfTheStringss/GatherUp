@@ -402,7 +402,7 @@ export default function CreateEventScreen() {
 
             if (suggestionResult && suggestionResult.proposal) {
                 const prop = suggestionResult.proposal;
-                const catName = prop.suggestedCategory || 'Social';
+                const catName = prop.suggestedSubCategory || prop.suggestedCategory || 'Social';
                 const sDate = prop.suggestedTime || new Date();
 
                 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -412,7 +412,7 @@ export default function CreateEventScreen() {
                 showToast(`AI chose ${dayStr} ${hourStr}:00 for ${catName}!`, 'success');
 
                 // Verilerin otomatik olarak manuel event kısmına geçirilmesi (Autofill)
-                setTitle(`Group ${catName}`);
+                setTitle(`${catName} Session`);
                 setCategory(catName);
                 setDate(sDate);
                 setIsPrivate(true);

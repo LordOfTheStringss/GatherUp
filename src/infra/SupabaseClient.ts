@@ -50,13 +50,4 @@ export class SupabaseClient {
             })
             .subscribe();
     }
-
-    /**
-     * Triggers a serverless Deno function for complex logic.
-     */
-    public async invokeEdgeFunction(funcName: string, payload: any): Promise<any> {
-        return await this.client.functions.invoke(funcName, {
-            body: payload,
-        });
-    }
 }

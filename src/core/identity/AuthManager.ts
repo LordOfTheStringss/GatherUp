@@ -71,25 +71,8 @@ export class AuthManager {
             throw new Error(error.message);
         }
 
-        // Trigger initial embedding generation
-        // After auth.signUp, the user record might take a moment to sync to public.users via triggers
-        // We call it with default/initial values
-        const status = email.endsWith('.edu.tr') ? 'öğrenci' : 'çalışan';
-        if (authData.user) {
-            // Force base_location update in case the Supabase trigger missed it from raw_user_meta_data
-            if (data.baseLocation) {
-                await this.supabaseClient.client
-                    .from('users')
-                    .update({ base_location: data.baseLocation })
-                    .eq('id', authData.user.id)
-                    .then(({ error }: any) => {
-                        if (error) console.error("Failed to force update base_location:", error);
-                    });
-            }
-
-            VectorService.getInstance().generateUserEmbedding(authData.user.id, 0, status, [], true)
+            VectorService.getInstance().generateUserEmbedding(authData.user.id)
                 .catch((e: any) => console.error("Initial embedding generation failed:", e));
-        }
 
         return { success: true, userId: authData.user?.id };
     }
@@ -137,7 +120,7 @@ export class AuthManager {
 
             if (userProfile?.status?.toLowerCase() === 'banned') {
                 await this.supabaseClient.client.auth.signOut();
-                
+
                 // Show notification before throwing
                 const { Alert } = await import('react-native');
                 Alert.alert(
@@ -145,7 +128,7 @@ export class AuthManager {
                     'Your account has been restricted by an administrator.',
                     [{ text: 'OK' }]
                 );
-                
+
                 throw new Error("Your account has been suspended by an administrator.");
             }
 
@@ -168,11 +151,11 @@ export class AuthManager {
     public async validateDomain(email: string): Promise<boolean> {
         const lowerEmail = email.toLowerCase();
         const parts = lowerEmail.split('@');
-        
+
         if (parts.length !== 2) {
             return false;
         }
-        
+
         const extractedDomain = parts[1];
 
         const { data, error } = await this.supabaseClient.client

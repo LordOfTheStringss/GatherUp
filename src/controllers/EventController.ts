@@ -256,7 +256,15 @@ export class EventController {
                 const scheduleManager = new ScheduleManager();
                 await scheduleManager.removeEventFromSchedule(user.id, data.title);
             }
+
+            // Remove from event_participants table
+            await sClient.from('event_participants').delete().eq('event_id', eventId).eq('user_id', user.id);
             
+            // Trigger user embedding update (history changed)
+            const { VectorService } = await import('../intelligence/VectorService');
+            VectorService.getInstance().generateUserEmbedding(user.id)
+                .catch((e: any) => console.error("Failed to update user embedding after leaving event:", e));
+
             return { status: 200, message: "Left Event" };
         } catch (e: any) {
              return { status: 500, message: e.message || "Failed to leave event" };
@@ -314,6 +322,11 @@ export class EventController {
             if (user && data?.title) {
                 const scheduleManager = new ScheduleManager();
                 await scheduleManager.removeEventFromSchedule(user.id, data.title);
+
+                // Trigger user embedding update (history changed)
+                const { VectorService } = await import('../intelligence/VectorService');
+                VectorService.getInstance().generateUserEmbedding(user.id)
+                    .catch((e: any) => console.error("Failed to update user embedding after ending event:", e));
             }
 
             return { status: 200, message: 'Event ended successfully' };
