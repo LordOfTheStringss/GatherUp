@@ -34,7 +34,6 @@ export default function EventDetailScreen() {
 
     const [inputText, setInputText] = useState('');
     const [messages, setMessages] = useState<any[]>([]);
-    const [selectedParticipant, setSelectedParticipant] = useState<any | null>(null);
     const [showParticipantModal, setShowParticipantModal] = useState(false);
     const [showChat, setShowChat] = useState(false);
 
@@ -309,7 +308,11 @@ export default function EventDetailScreen() {
         const senderName = isMe ? 'You' : (item.users?.full_name?.split(' ')[0] || item.sender_id?.substring(0, 5));
         return (
             <View style={[styles.messageBubble, isMe ? styles.messageSent : styles.messageRecv]}>
-                {!isMe && <Text style={styles.senderId}>{senderName}</Text>}
+                {!isMe && (
+                    <TouchableOpacity onPress={() => router.push('/user/' + item.sender_id)}>
+                        <Text style={styles.senderId}>{senderName}</Text>
+                    </TouchableOpacity>
+                )}
                 <Text style={[styles.messageText, isMe && { color: '#FFF' }]}>{item.content}</Text>
             </View>
         );
@@ -359,8 +362,7 @@ export default function EventDetailScreen() {
                                 <TouchableOpacity
                                     style={styles.participantItem}
                                     onPress={() => {
-                                        setSelectedParticipant(item);
-                                        setShowParticipantModal(true);
+                                        router.push('/user/' + item.id);
                                     }}
                                 >
                                     <View style={styles.pAvatar}><Text style={styles.pAvatarText}>{item.full_name?.charAt(0) || 'U'}</Text></View>
@@ -397,44 +399,6 @@ export default function EventDetailScreen() {
                         </TouchableOpacity>
                     </View>
                 </KeyboardAvoidingView>
-
-                {/* Participant Profile Modal */}
-                <Modal visible={showParticipantModal} animationType="slide" transparent>
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            <View style={[styles.pAvatar, { width: 64, height: 64, borderRadius: 32 }]}>
-                                <Text style={[styles.pAvatarText, { fontSize: 28 }]}>{selectedParticipant?.full_name?.charAt(0) || 'U'}</Text>
-                            </View>
-                            <Text style={styles.modalTitle}>{selectedParticipant?.full_name}</Text>
-                            <Text style={styles.sectionLabel}>Earned Badges</Text>
-                            <ScrollView
-                                horizontal
-                                showsHorizontalScrollIndicator={false}
-                                contentContainerStyle={{ marginVertical: 12, paddingBottom: 16 }}
-                            >
-                                {selectedParticipant?.badges && selectedParticipant.badges.length > 0 ? (
-                                    selectedParticipant.badges.map((b: string) => {
-                                        const cfg = BADGE_CONFIG[b];
-                                        if (!cfg) return null;
-                                        return (
-                                            <View key={b} style={styles.badgeSmall}>
-                                                <View style={{ backgroundColor: cfg.color + '20', padding: 12, borderRadius: 20, marginBottom: 6 }}>
-                                                    <Ionicons name={cfg.icon as any} size={24} color={cfg.color} />
-                                                </View>
-                                                <Text style={{ color: '#E2E8F0', fontSize: 10, fontWeight: 'bold', textAlign: 'center' }}>{cfg.title}</Text>
-                                            </View>
-                                        );
-                                    })
-                                ) : (
-                                    <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 16 }}>No badges earned yet.</Text>
-                                )}
-                            </ScrollView>
-                            <TouchableOpacity style={styles.skipBtn} onPress={() => setShowParticipantModal(false)}>
-                                <Text style={styles.skipText}>Close</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </Modal>
             </View>
         );
     }
@@ -550,8 +514,7 @@ export default function EventDetailScreen() {
                                 key={item.id}
                                 style={styles.participantItem}
                                 onPress={() => {
-                                    setSelectedParticipant(item);
-                                    setShowParticipantModal(true);
+                                    router.push('/user/' + item.id);
                                 }}
                             >
                                 <View style={styles.pAvatar}><Text style={styles.pAvatarText}>{item.full_name?.charAt(0) || 'U'}</Text></View>
@@ -587,43 +550,7 @@ export default function EventDetailScreen() {
 
             {/* Badge Economy Modal removed for simplified UX */}
 
-            {/* Participant Profile Modal */}
-            <Modal visible={showParticipantModal} animationType="slide" transparent>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={[styles.pAvatar, { width: 64, height: 64, borderRadius: 32 }]}>
-                            <Text style={[styles.pAvatarText, { fontSize: 28 }]}>{selectedParticipant?.full_name?.charAt(0) || 'U'}</Text>
-                        </View>
-                        <Text style={styles.modalTitle}>{selectedParticipant?.full_name}</Text>
-                        <Text style={styles.sectionLabel}>Earned Badges</Text>
-                        <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={{ marginVertical: 12, paddingBottom: 16 }}
-                        >
-                            {selectedParticipant?.badges && selectedParticipant.badges.length > 0 ? (
-                                selectedParticipant.badges.map((b: string) => {
-                                    const cfg = BADGE_CONFIG[b];
-                                    if (!cfg) return null;
-                                    return (
-                                        <View key={b} style={styles.badgeSmall}>
-                                            <View style={{ backgroundColor: cfg.color + '20', padding: 12, borderRadius: 20, marginBottom: 6 }}>
-                                                <Ionicons name={cfg.icon as any} size={24} color={cfg.color} />
-                                            </View>
-                                            <Text style={{ color: '#E2E8F0', fontSize: 10, fontWeight: 'bold', textAlign: 'center' }}>{cfg.title}</Text>
-                                        </View>
-                                    );
-                                })
-                            ) : (
-                                <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 16 }}>No badges earned yet.</Text>
-                            )}
-                        </ScrollView>
-                        <TouchableOpacity style={styles.skipBtn} onPress={() => setShowParticipantModal(false)}>
-                            <Text style={styles.skipText}>Close</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </Modal>
+            {/* Participant Profile Modal removed globally */}
         </View>
     );
 }

@@ -220,13 +220,19 @@ export default function HomeScreen() {
           activeOpacity={0.8}
         >
           <View style={styles.friendCardHeader}>
-            <View style={styles.friendHostAvatar}>
-              <Text style={styles.hostInitial}>{item.host.charAt(0)}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.friendHostName}>{item.host}</Text>
-              <Text style={styles.friendActionText}>is going to an event</Text>
-            </View>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+              onPress={() => router.push(`/user/${item.organizer_id}`)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.friendHostAvatar}>
+                <Text style={styles.hostInitial}>{item.host.charAt(0)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.friendHostName}>{item.host}</Text>
+                <Text style={styles.friendActionText}>is going to an event</Text>
+              </View>
+            </TouchableOpacity>
             <Ionicons
               name="ellipsis-horizontal"
               size={20}

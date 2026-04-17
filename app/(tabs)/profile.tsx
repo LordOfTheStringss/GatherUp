@@ -855,7 +855,14 @@ export default function ProfileScreen() {
                 <View>
                   <Text style={styles.modalSectionTitle}>Pending Requests</Text>
                   {pendingRequests.map((r) => (
-                    <View key={r.id} style={styles.friendRow}>
+                    <TouchableOpacity 
+                      key={r.id} 
+                      style={styles.friendRow}
+                      onPress={() => {
+                        setFriendsModalVisible(false);
+                        router.push('/user/' + r.id);
+                      }}
+                    >
                       <View style={styles.friendAvatar}>
                         <Text style={{ color: "#fff", fontWeight: "bold" }}>
                           {r.full_name?.charAt(0)}
@@ -885,7 +892,7 @@ export default function ProfileScreen() {
                       >
                         <Ionicons name="close" size={20} color="#EF4444" />
                       </TouchableOpacity>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               )}
@@ -897,7 +904,14 @@ export default function ProfileScreen() {
                 </Text>
               )}
               {friends.map((f) => (
-                <View key={f.id} style={styles.friendRow}>
+                <TouchableOpacity 
+                  key={f.id} 
+                  style={styles.friendRow}
+                  onPress={() => {
+                    setFriendsModalVisible(false);
+                    router.push('/user/' + f.id);
+                  }}
+                >
                   <View style={styles.friendAvatar}>
                     <Text style={{ color: "#fff", fontWeight: "bold" }}>
                       {f.full_name?.charAt(0)}
@@ -915,7 +929,7 @@ export default function ProfileScreen() {
                       </View>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
 
               <Text style={[styles.modalSectionTitle, { marginTop: 32 }]}>
