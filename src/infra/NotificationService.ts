@@ -112,13 +112,19 @@ export class NotificationService {
         );
     }
 
-    public async sendMergeProposalNotification(targetUserId: string, proposalId: string, otherEventTitle: string): Promise<void> {
+    public async sendMergeProposalNotification(
+        targetUserId: string,
+        proposalId: string,
+        myEventId: string,
+        myEventTitle: string,
+        otherEventTitle: string
+    ): Promise<void> {
         await this.sendPush(
             targetUserId,
-            "Event Merge Suggested",
-            `Would you like to merge your event with ${otherEventTitle}? This will combine participants into a new event.`,
-            { proposalId, action: 'EVENT_MERGE_PROPOSAL' },
-            'event_merge'
+            'Benzer Bir Etkinlik Bulundu!',
+            `Senin "${myEventTitle}" etkinliğinle benzer saatlerde "${otherEventTitle}" adlı bir etkinlik var. Birlikte düzenlemek ister misin?`,
+            { proposalId, myEventId, action: 'merge_suggestion' },
+            'merge_suggestion'
         );
     }
 

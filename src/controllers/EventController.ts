@@ -388,4 +388,40 @@ export class EventController {
             return { status: 500, message: error.message || "Failed to accept merge" };
         }
     }
+
+    /**
+     * Rejects a merge proposal. Notifies the other organizer and marks it REJECTED.
+     */
+    public async rejectMerge(proposalId: string): Promise<ResponseEntity> {
+        try {
+            const user = await AuthManager.getInstance().getCurrentUser();
+            if (!user) throw new Error('Authentication required');
+
+            const sClient = SupabaseClient.getInstance().client;
+
+            // Validate proposal exists and is still pending
+            const { data: proposal, error: fetchErr } = await sClient
+                .from('merge_proposals')
+                .select('id, status, event_a_id, event_b_id')
+                .eq('id', proposalId)
+                .single();
+
+            if (fetchErr || !proposal) throw new Error('Proposal not found');
+            if (proposal.status !== 'PENDING') {
+                return { status: 200, message: 'Proposal is no longer active' };
+            }
+
+            const { MatchingService } = await import('../intelligence/MatchingService');
+            const { VectorService } = await import('../intelligence/VectorService');
+            const { NotificationService } = await import('../infra/NotificationService');
+
+            const matcher = new MatchingService(VectorService.getInstance(), NotificationService.getInstance());
+            await matcher.rejectMerge(proposalId, user.id);
+
+            return { status: 200, message: 'Merge proposal rejected.' };
+        } catch (error: any) {
+            console.error('rejectMerge error:', error);
+            return { status: 500, message: error.message || 'Failed to reject merge' };
+        }
+    }
 }
