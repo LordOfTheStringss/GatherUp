@@ -158,13 +158,8 @@ export class UserManager {
         }
         console.log("UserManager: Supabase update successful");
 
-        // Trigger embedding update asynchronously
-        const user = await this.getUserProfile(userId);
-        const score = user.reputation_score || 0;
-        const status = user.email ? (user.email.endsWith('.edu.tr') ? 'öğrenci' : 'çalışan') : 'çalışan';
-        const tags = user.interest_tags || [];
-
-        VectorService.getInstance().generateUserEmbedding(userId, score, status, tags, true)
+        // Trigger embedding update asynchronously via local ONNX model
+        VectorService.getInstance().generateUserEmbedding(userId)
             .catch((e: any) => console.error("Failed to update user embedding after profile change:", e));
     }
 

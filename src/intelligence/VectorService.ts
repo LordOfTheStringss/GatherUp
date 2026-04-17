@@ -1,9 +1,20 @@
+import { Asset } from 'expo-asset';
 import { SupabaseClient } from '../infra/SupabaseClient';
 import { VectorGenerationException } from './Exceptions';
 
+const SUBCAT_TO_IDX_JSON = require('../../assets/models/subcat_to_idx.json');
+const CAT_ENCODER_JSON = require('../../assets/models/cat_encoder.json');
+const USER_COORD_SCALER = require('../../assets/models/user_coord_scaler.json');
+const EVENT_COORD_SCALER = require('../../assets/models/event_coord_scaler.json');
+const EVENT_DUR_SCALER = require('../../assets/models/event_dur_scaler.json');
+
+// Re-using constants from the model assets
+const MASTER_52: string[] = CAT_ENCODER_JSON;
+const SUBCAT_TO_IDX: Record<string, number> = SUBCAT_TO_IDX_JSON;
+
 /**
- * Interfaces with the embedding model to convert text to vectors 
- * and performs similarity calculations.
+ * Interfaces with the local ONNX models to produce embeddings
+ * for both users (User Tower) and events (Event Tower).
  */
 export class VectorService {
     private static instance: VectorService;
@@ -84,130 +95,220 @@ export class VectorService {
         return VectorService.instance;
     }
 
-    // SBERT sentence templates for generating descriptive user profiles
-    private userTemplates = [
-        "Platformda {score} tecrübe puanına (XP) sahip aktif bir {statu}. Özellikle {tags} konularına büyük ilgi duyuyor.",
-        "{tags} alanlarındaki etkinlikleri yakından takip eden bir {statu}. Topluluk puanı {score}.",
-        "Kendini {tags} konularında geliştirmeyi seven ve sosyalleşmeye açık bir {statu}. Sistemde {score} XP'si bulunuyor..",
-        "Bir {statu} olarak {tags} üzerine odaklanıyor. Platformda {score} puanlık bir repütasyona sahip."
-    ];
-
     /**
-     * Generates a random sentence from the templates filled with user data.
+     * Internal helper to run ONNX inference for User Tower.
+     * Centralized here to avoid duplication in RecommendationEngine.
      */
-    public generateUserSentence(score: number, statu: string, tags: string[]): string {
-        const randomIndex = Math.floor(Math.random() * this.userTemplates.length);
-        let template = this.userTemplates[randomIndex];
+    public async runUserTowerInference(userId: string): Promise<number[]> {
+        const supabase = SupabaseClient.getInstance().client;
+        const ONNX = require('onnxruntime-react-native');
+        const TensorClass = ONNX.Tensor;
 
-        const tagsString = tags.join(', ');
+        try {
+            // 1. Fetch User Data (Interests & Archetype)
+            const { data: profile, error: pErr } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('user_id', userId)
+                .single();
+            
+            const { data: userData, error: uErr } = await supabase
+                .from('users')
+                .select('longitude, latitude, archetype, interest_tags')
+                .eq('id', userId)
+                .single();
 
-        return template
-            .replace('{score}', score.toString())
-            .replace('{statu}', statu)
-            .replace('{tags}', tagsString);
+            if (pErr || uErr || !profile || !userData) throw new Error("User data not found for vector sync");
+
+            // 2. Prepare History Sequence
+            // We need past events' numeric features
+            const MAX_HIST = 10;
+            const { data: participations } = await supabase
+                .from('event_participants')
+                .select('event_id, events(latitude, longitude, start_time, end_time)')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(MAX_HIST);
+
+            const histSeq = new Float32Array(MAX_HIST * 7).fill(0);
+            let histLen = 0;
+
+            if (participations) {
+                histLen = participations.length;
+                participations.reverse().forEach((p: any, idx: number) => {
+                    if (p.events) {
+                        const feats = this.calculateEventNumericFeatures(p.events);
+                        histSeq.set(feats, idx * 7);
+                    }
+                });
+            }
+
+            // 3. Prepare Inputs
+            const interests = new Float32Array(52).fill(0);
+            const userTags = userData.interest_tags || [];
+            userTags.forEach((t: string) => {
+                const idx = SUBCAT_TO_IDX[t];
+                if (idx !== undefined) interests[idx] = 1.0;
+            });
+
+            // Context: [cluster(5) + scaled_coords(2)]
+            const context = new Float32Array(7).fill(0);
+            const UPPER_CATEGORIES = ["Sports", "Technology_Science", "Arts_Culture", "Hobbies_Lifestyle", "Social_Career"];
+            const archeIdx = UPPER_CATEGORIES.indexOf(userData.archetype || "Social_Career");
+            if (archeIdx !== -1) context[archeIdx] = 1.0;
+
+            // Scaled coords
+            const lonMean = USER_COORD_SCALER.mean[0];
+            const lonStd = USER_COORD_SCALER.scale[0];
+            const latMean = USER_COORD_SCALER.mean[1];
+            const latStd = USER_COORD_SCALER.scale[1];
+
+            context[5] = ((userData.longitude || 32.815) - lonMean) / lonStd;
+            context[6] = ((userData.latitude || 39.900) - latMean) / latStd;
+
+            const count = new Float32Array([Math.log1p(histLen)]);
+            
+            // Calculate L2 norm of history sequence
+            let sumSq = 0;
+            histSeq.forEach(v => sumSq += v * v);
+            const histNorm = new Float32Array([Math.log1p(Math.sqrt(sumSq))]);
+
+            // 4. Run ONNX Session
+            const modelAsset = Asset.fromModule(require('../../assets/models/user_tower.onnx'));
+            await modelAsset.downloadAsync();
+            const session = await ONNX.InferenceSession.create(modelAsset.localUri || modelAsset.uri);
+
+            const results = await session.run({
+                interests: new TensorClass('float32', interests, [1, 52]),
+                context: new TensorClass('float32', context, [1, 7]),
+                count: new TensorClass('float32', count, [1, 1]),
+                hist_norm: new TensorClass('float32', histNorm, [1, 1]),
+                hist_seq: new TensorClass('float32', histSeq, [1, MAX_HIST, 7]),
+                hist_len: new TensorClass('int64', BigInt64Array.from([BigInt(histLen)]), [1]),
+            });
+
+            const userVectorTensor = results.user_vector || Object.values(results)[0];
+            return Array.from(userVectorTensor.data as Float32Array);
+        } catch (error) {
+            console.error('User Tower Inference Error:', error);
+            throw error;
+        }
     }
 
     /**
-     * Generates user embedding (from rich context) by calling edge function and saves it to the database
+     * Generates user embedding using local ONNX model and saves it to 'profiles.profile_vector'.
      */
-    public async generateUserEmbedding(userId: string, score: number, statu: string, tags: string[], isAvailable: boolean): Promise<boolean> {
+    public async generateUserEmbedding(userId: string): Promise<boolean> {
         try {
-            const profil_ozeti = this.generateUserSentence(score, statu, tags);
-            const tags_str = tags.join(', ');
-            const capitalizeStatu = statu.charAt(0).toUpperCase() + statu.slice(1);
-            const musaitlikText = isAvailable ? "Müsait" : "Pek müsait değil";
+            console.log(`[VectorService] Syncing profile_vector for user ${userId}...`);
+            const vector = await this.runUserTowerInference(userId);
 
-            // Zengin User Context (Yapay Zeka DNA'sı - User requested format)
-            const zengin_user_context = (
-                `Kullanıcı Statüsü: ${capitalizeStatu} | ` +
-                `İlgi Alanları: ${tags_str} | ` +
-                `Repütasyon Puanı (XP): ${score} | ` +
-                `Müsaitlik Durumu: ${musaitlikText} | ` +
-                `Profil Özeti: ${profil_ozeti}`
-            );
+            const { error } = await SupabaseClient.getInstance().client
+                .from('profiles')
+                .update({ 
+                    profile_vector: vector,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('user_id', userId);
 
-            console.log('Generated Rich User Context:', zengin_user_context);
-
-            const supabaseClient = SupabaseClient.getInstance();
-
-            // Generate embedding via Edge Function, giving it the generated rich context
-            const result = await supabaseClient.invokeEdgeFunction('profiler', { id: userId, type: 'user', text: zengin_user_context });
-
-            if (result.error || (result.data && !result.data.success)) {
-                console.error('Error invoking profiler edge function:', result.error || result.data?.error);
-                return false;
-            }
-
-            console.log('Result from Edge Function:', result.data.message);
+            if (error) throw error;
+            console.log(`[VectorService] Success: profile_vector updated.`);
             return true;
         } catch (error) {
             console.error('Failed to generate user embedding:', error);
-            throw new VectorGenerationException();
+            return false;
         }
     }
 
     /**
-     * Generates event embedding (from rich context) by calling edge function and saves it to the database
+     * Generates event embedding using local ONNX model and saves it to 'events.embedding'.
      */
-    public async generateEventEmbedding(
-        eventId: string,
-        eventData: {
-            title: string,
-            time: string | Date,
-            durationHours: number,
-            locationName?: string,
-            locationType?: string,
-            category: string,
-            subCategory: string,
-            minCapacity?: number,
-            maxCapacity?: number,
-            description?: string
-        }
-    ): Promise<boolean> {
+    public async generateEventEmbedding(eventId: string, eventData?: any): Promise<boolean> {
         try {
-            const date = new Date(eventData.time);
-            const gun = date.getDate();
-            const ay = this.months[date.getMonth()];
-            const yil = date.getFullYear();
-            const saat = date.getHours().toString().padStart(2, '0') + ":" + date.getMinutes().toString().padStart(2, '0');
+            console.log(`[VectorService] Syncing event embedding for ${eventId}...`);
+            const supabase = SupabaseClient.getInstance().client;
+            const ONNX = require('onnxruntime-react-native');
+            const TensorClass = ONNX.Tensor;
 
-            const cleanDesc = (eventData.description || '').replace(/\r?\n|\r/g, " ");
-
-            // Smart Map lookup for Tags and Category consistency
-            const smartDetails = this.smartMap[eventData.subCategory];
-            const tagsString = smartDetails ? smartDetails.tags : '';
-            const category = smartDetails ? smartDetails.cat : eventData.category;
-
-            // Zengin AI Context (User requested format)
-            const zengin_ai_context = (
-                `Başlık: ${eventData.title} | ` +
-                `Tarih ve Saat: ${gun} ${ay} ${yil} - ${saat} | ` +
-                `Mekan: ${eventData.locationName || 'Belirtilmedi'} (Tip: ${eventData.locationType || 'Belirtilmedi'}) | ` +
-                `Kategori: ${category} > ${eventData.subCategory} | ` +
-                `Süre: ${eventData.durationHours} Saat | ` +
-                `Kapasite: ${eventData.minCapacity || 0}-${eventData.maxCapacity || 0} Kişi | ` +
-                `Karakteristik Özellikler: ${tagsString} | ` +
-                `Açıklama Özeti: ${cleanDesc.substring(0, 100)}...`
-            );
-
-            console.log('Generated Rich Event Context:', zengin_ai_context);
-
-            const supabaseClient = SupabaseClient.getInstance();
-
-            // Generate embedding via Edge Function, giving it the generated rich context
-            const result = await supabaseClient.invokeEdgeFunction('profiler', { id: eventId, type: 'event', text: zengin_ai_context });
-
-            if (result.error || (result.data && !result.data.success)) {
-                console.error('Error invoking profiler edge function:', result.error || result.data?.error);
-                return false;
+            // 1. Ensure we have data
+            let record = eventData;
+            if (!record) {
+                const { data } = await supabase.from('events').select('*').eq('id', eventId).single();
+                record = data;
             }
+            if (!record) throw new Error("Event record not found");
 
-            console.log('Result from Edge Function:', result.data.message);
+            // 2. Prepare Numeric Features (7-dim)
+            const numericFeats = this.calculateEventNumericFeatures(record);
+
+            // 3. Subcategory Index
+            const subCategory = record.sub_category || record.subCategory || "";
+            const subcatIdx = SUBCAT_TO_IDX[subCategory] || 0;
+
+            // 4. Run ONNX Session
+            const modelAsset = Asset.fromModule(require('../../assets/models/event_tower.onnx'));
+            await modelAsset.downloadAsync();
+            const session = await ONNX.InferenceSession.create(modelAsset.localUri || modelAsset.uri);
+
+            const results = await session.run({
+                subcat_idx: new TensorClass('int64', BigInt64Array.from([BigInt(subcatIdx)]), [1]),
+                numeric_feats: new TensorClass('float32', numericFeats, [1, 7]),
+            });
+
+            // Correct output key check
+            const eventVectorTensor = results.output || results.vector || Object.values(results)[0];
+            const vector = Array.from(eventVectorTensor.data as Float32Array);
+
+            // 5. Update DB (column: embedding)
+            const { error } = await supabase
+                .from('events')
+                .update({ embedding: vector })
+                .eq('id', eventId);
+
+            if (error) throw error;
+            console.log(`[VectorService] Success: event embedding updated.`);
             return true;
         } catch (error) {
             console.error('Failed to generate event embedding:', error);
-            throw new VectorGenerationException();
+            return false;
         }
+    }
+
+    private calculateEventNumericFeatures(row: any): Float32Array {
+        const feats = new Float32Array(7);
+        
+        // Coords: Handle snake_case (DB) and camelCase (DTO)
+        const lat = row.location_lat ?? row.latitude ?? row.locationLat ?? 39.900;
+        const lon = row.location_lng ?? row.longitude ?? row.locationLng ?? 32.815;
+        
+        feats[0] = (lat - EVENT_COORD_SCALER.mean[0]) / EVENT_COORD_SCALER.scale[0];
+        feats[1] = (lon - EVENT_COORD_SCALER.mean[1]) / EVENT_COORD_SCALER.scale[1];
+
+        // Duration: Handle pre-calculated durationHours or raw times
+        let durMins = 120;
+        if (row.durationHours) {
+            durMins = row.durationHours * 60;
+        } else if (row.start_time && row.end_time) {
+            const startTime = new Date(row.start_time);
+            const endTime = new Date(row.end_time);
+            durMins = (endTime.getTime() - startTime.getTime()) / 60000;
+        } else if (row.time) { // CreateEventDTO fallback
+            durMins = 60; 
+        }
+
+        feats[2] = (durMins - EVENT_DUR_SCALER.mean[0]) / EVENT_DUR_SCALER.scale[0];
+
+        // Cyclic Time
+        const startDate = row.start_time ? new Date(row.start_time) : (row.time ? new Date(row.time) : new Date());
+        const hour = startDate.getHours() + startDate.getMinutes() / 60.0;
+        feats[3] = Math.sin(2 * Math.PI * hour / 24.0);
+        feats[4] = Math.cos(2 * Math.PI * hour / 24.0);
+
+        const dow = startDate.getDay(); // 0 is Sunday
+        feats[5] = Math.sin(2 * Math.PI * dow / 7.0);
+        feats[6] = Math.cos(2 * Math.PI * dow / 7.0);
+
+        return feats;
     }
 
     /**

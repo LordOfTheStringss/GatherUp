@@ -5,9 +5,10 @@ import { User } from '../core/identity/User';
 import { BlockType, DataSource, TimeSlot } from '../core/schedule/TimeSlot';
 import { SupabaseClient } from '../infra/SupabaseClient';
 import { Location, LocationType } from '../spatial/Location';
+import { ScheduleManager } from '../core/schedule/ScheduleManager';
+import { VectorService } from './VectorService';
 
 export interface PlanProposal {
-    // Defines the structure for a suggested group plan
     suggestedTime?: Date;
     suggestedLocation?: Location;
     matchingEvents?: Event[];
@@ -17,27 +18,170 @@ export interface PlanProposal {
     suggestedTags?: string;
 }
 
-export const EVENT_CLUSTERS: Record<string, string[]> = {
-    "Sports": [
-        "Volleyball", "Basketball", "Football", "Tennis", "Swimming", "Running", "Yoga", "Pilates",
-        "Fitness", "Skateboarding", "Cycling", "Archery", "Mountaineering", "Boxing", "Table Tennis"
-    ],
-    "Tech & Science": [
-        "Software", "Artificial Intelligence", "Data Science", "Cyber Security", "Robotics",
-        "Game Development", "Blockchain", "Astronomy", "Electronics"
-    ],
-    "Art & Culture": [
-        "Theater", "Cinema", "Concert", "Dance", "Painting", "Sculpture", "Literature",
-        "Photography", "Exhibition", "Stand-up Comedy", "Museums", "Opera"
-    ],
-    "Hobbies & Lifestyle": [
-        "Camping", "Chess", "Books", "Cooking", "Gastronomy", "E-sports",
-        "Gardening", "Travel", "Foreign Languages", "Collections", "Musical Instrument"
-    ],
-    "Social & Career": [
-        "Volunteering", "Networking", "Career Days", "Workshop"
-    ]
+// ─── Model Assets ─────────────────────────────────────────────────────────────
+const SUBCAT_TO_IDX_JSON = require('../../assets/models/subcat_to_idx.json');
+const CAT_ENCODER_JSON = require('../../assets/models/cat_encoder.json');
+const USER_COORD_SCALER = require('../../assets/models/user_coord_scaler.json');
+const EVENT_COORD_SCALER = require('../../assets/models/event_coord_scaler.json');
+const EVENT_DUR_SCALER = require('../../assets/models/event_dur_scaler.json');
+
+/** 52 subcategories in sorted order — index position is the embedding index. */
+export const MASTER_52: string[] = CAT_ENCODER_JSON;
+const MASTER_52_SORTED: string[] = CAT_ENCODER_JSON;
+
+/** Maps subcategory name → index in MASTER_52_SORTED */
+const SUBCAT_TO_IDX: Record<string, number> = SUBCAT_TO_IDX_JSON;
+
+/** Upper categories in the same order as the model's UPPER_CATEGORIES list. */
+const UPPER_CATEGORIES = [
+    'Sports',
+    'Technology_Science',
+    'Arts_Culture',
+    'Hobbies_Lifestyle',
+    'Social_Career',
+] as const;
+
+/** Maps each subcategory to its upper category. */
+const CLUSTER_MAP: Record<string, string> = {
+    Volleyball: 'Sports', Basketball: 'Sports', Football: 'Sports', Tennis: 'Sports',
+    Swimming: 'Sports', Running: 'Sports', Yoga: 'Sports', Pilates: 'Sports',
+    Fitness: 'Sports', Skateboarding: 'Sports', Cycling: 'Sports', Archery: 'Sports',
+    Mountaineering: 'Sports', Boxing: 'Sports', 'Table Tennis': 'Sports',
+    Software: 'Technology_Science', 'Artificial Intelligence': 'Technology_Science',
+    'Data Science': 'Technology_Science', Cybersecurity: 'Technology_Science',
+    Robotics: 'Technology_Science', 'Game Development': 'Technology_Science',
+    Blockchain: 'Technology_Science', Astronomy: 'Technology_Science',
+    Electronics: 'Technology_Science',
+    Theater: 'Arts_Culture', Cinema: 'Arts_Culture', Concert: 'Arts_Culture',
+    Dance: 'Arts_Culture', Painting: 'Arts_Culture', Sculpture: 'Arts_Culture',
+    Literature: 'Arts_Culture', Photography: 'Arts_Culture', Exhibition: 'Arts_Culture',
+    'Stand-up': 'Arts_Culture', Museums: 'Arts_Culture', Opera: 'Arts_Culture',
+    Camping: 'Hobbies_Lifestyle', Chess: 'Hobbies_Lifestyle', Reading: 'Hobbies_Lifestyle',
+    Food: 'Hobbies_Lifestyle', Gastronomy: 'Hobbies_Lifestyle', Gaming: 'Hobbies_Lifestyle',
+    'E-sports': 'Hobbies_Lifestyle', Gardening: 'Hobbies_Lifestyle', Travel: 'Hobbies_Lifestyle',
+    'Foreign Languages': 'Hobbies_Lifestyle', Collecting: 'Hobbies_Lifestyle',
+    'Musical Instruments': 'Hobbies_Lifestyle',
+    Volunteering: 'Social_Career', Networking: 'Social_Career',
+    'Career Days': 'Social_Career', Workshop: 'Social_Career',
 };
+
+/**
+ * Event clusters for UI display — keys now match model's UPPER_CATEGORIES.
+ * Values use the canonical MASTER_52 subcategory names.
+ */
+export const EVENT_CLUSTERS: Record<string, string[]> = {
+    Sports: [
+        'Volleyball', 'Basketball', 'Football', 'Tennis', 'Swimming', 'Running',
+        'Yoga', 'Pilates', 'Fitness', 'Skateboarding', 'Cycling', 'Archery',
+        'Mountaineering', 'Boxing', 'Table Tennis',
+    ],
+    Technology_Science: [
+        'Software', 'Artificial Intelligence', 'Data Science', 'Cybersecurity',
+        'Robotics', 'Game Development', 'Blockchain', 'Astronomy', 'Electronics',
+    ],
+    Arts_Culture: [
+        'Theater', 'Cinema', 'Concert', 'Dance', 'Painting', 'Sculpture',
+        'Literature', 'Photography', 'Exhibition', 'Stand-up', 'Museums', 'Opera',
+    ],
+    Hobbies_Lifestyle: [
+        'Camping', 'Chess', 'Reading', 'Food', 'Gastronomy', 'Gaming',
+        'E-sports', 'Gardening', 'Travel', 'Foreign Languages', 'Collecting',
+        'Musical Instruments',
+    ],
+    Social_Career: ['Volunteering', 'Networking', 'Career Days', 'Workshop'],
+};
+
+// ─── Scaler Parameters ───────────────────────────────────────────────────────
+// Pulled from assets/models/*.json
+
+// User scaler: [lon, lat]
+const USER_LON_MEAN = USER_COORD_SCALER.mean[0];
+const USER_LON_STD = USER_COORD_SCALER.scale[0];
+const USER_LAT_MEAN = USER_COORD_SCALER.mean[1];
+const USER_LAT_STD = USER_COORD_SCALER.scale[1];
+
+// Event scaler: [lat, lon] -> DİKKAT: Sıralama farklı olabilir
+const EVENT_LAT_MEAN = EVENT_COORD_SCALER.mean[0];
+const EVENT_LAT_STD = EVENT_COORD_SCALER.scale[0];
+const EVENT_LON_MEAN = EVENT_COORD_SCALER.mean[1];
+const EVENT_LON_STD = EVENT_COORD_SCALER.scale[1];
+
+// Duration scaler
+const EVENT_DUR_MEAN = EVENT_DUR_SCALER.mean[0];
+const EVENT_DUR_STD = EVENT_DUR_SCALER.scale[0];
+
+// Group Model Defaults (if no JSON available or incomplete)
+const GROUP_SPREAD_MEAN = 10.0;
+const GROUP_SPREAD_STD = 5.0;
+const GROUP_FREE_SCORE_MEAN = 0.65;
+const GROUP_FREE_SCORE_STD = 0.15;
+
+const MAX_HIST = 10; // matches user tower expected dimension
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Derives the dominant archetype from a user's interest tags. */
+function deriveArchetype(interestTags: string[]): string {
+    const counts: Record<string, number> = {};
+    for (const tag of interestTags) {
+        const cat = CLUSTER_MAP[tag];
+        if (cat) counts[cat] = (counts[cat] || 0) + 1;
+    }
+    let best = 'Hobbies_Lifestyle';
+    let bestCount = -1;
+    for (const [cat, cnt] of Object.entries(counts)) {
+        if (cnt > bestCount) { best = cat; bestCount = cnt; }
+    }
+    return best;
+}
+
+/** Converts interest tag list to a 52-dim binary Float32Array. */
+function buildInterestsBinary(interestTags: string[]): Float32Array {
+    const vec = new Float32Array(MASTER_52_SORTED.length);
+    for (const tag of interestTags) {
+        const idx = SUBCAT_TO_IDX[tag];
+        if (idx !== undefined) vec[idx] = 1.0;
+    }
+    return vec;
+}
+
+/** Converts archetype string + user lon/lat to 7-dim context Float32Array. */
+function buildContext(archetype: string, lon: number, lat: number): Float32Array {
+    const ctx = new Float32Array(7);
+    const catIdx = UPPER_CATEGORIES.indexOf(archetype as any);
+    if (catIdx >= 0) ctx[catIdx] = 1.0;     // 5-dim one-hot
+    ctx[5] = (lon - USER_LON_MEAN) / USER_LON_STD;
+    ctx[6] = (lat - USER_LAT_MEAN) / USER_LAT_STD;
+    return ctx;
+}
+
+/** Builds a 7-dim numeric feature vector for a single past event. */
+function buildEventNumeric(lat: number, lon: number, durationMins: number, startTime: Date): Float32Array {
+    const scaledLon = (lon - EVENT_LON_MEAN) / EVENT_LON_STD;
+    const scaledLat = (lat - EVENT_LAT_MEAN) / EVENT_LAT_STD;
+    const scaledDur = (durationMins - EVENT_DUR_MEAN) / EVENT_DUR_STD;
+    const hours = startTime.getHours() + startTime.getMinutes() / 60.0;
+    const hourSin = Math.sin((2 * Math.PI * hours) / 24.0);
+    const hourCos = Math.cos((2 * Math.PI * hours) / 24.0);
+    const dow = startTime.getDay() === 0 ? 6 : startTime.getDay() - 1; // 0=Mon
+    const dowSin = Math.sin((2 * Math.PI * dow) / 7.0);
+    const dowCos = Math.cos((2 * Math.PI * dow) / 7.0);
+    return new Float32Array([scaledLon, scaledLat, scaledDur, hourSin, hourCos, dowSin, dowCos]);
+}
+
+/** Haversine distance in km. */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ─── RecommendationEngine ─────────────────────────────────────────────────────
 
 export class RecommendationEngine {
     private static instance: RecommendationEngine;
@@ -52,14 +196,11 @@ export class RecommendationEngine {
     }
 
     /**
-     * Entry point for a quick, one-click event suggestion.
-     * Uses the internal pipeline to find the best match.
+     * One-tap event suggestion entry point.
      */
     public async getOneTapSuggestion(user: any, loc: Location): Promise<Event[]> {
-        // Fallback for Supabase User object, which uses 'id' instead of 'userId'
         const targetUserId = user.userId || user.id;
-
-        return await this.fetchRecommendedEvents(
+        return this.fetchRecommendedEvents(
             targetUserId,
             loc.coordinates.latitude,
             loc.coordinates.longitude
@@ -67,115 +208,136 @@ export class RecommendationEngine {
     }
 
     /**
-     * Group Generative Model Input Builder
-     * Calculates the 939-dimensional input for group_model.onnx based on users' profile vectors and schedules.
+     * Group plan suggestion logic.
+     * Inputs: scalar_input (1,59) + schedule_input (1,168).
+     *
+     * scalar_input layout (59-dim):
+     *   avg_interests(52) + diversity(1) + avg_loc(2) + p_count(1) + geo_spread(1)
+     *   + free_score(1) + interest_alignment(1)
      */
     public async getGroupSuggestion(users: User[]): Promise<{ features: Float32Array; proposal: PlanProposal }> {
-        const embDim = 384;
         const numUsers = users.length;
+        // BUG FIX: Filter out invalid/undefined userIds to prevent Supabase UUID errors
+        const userIds = users.map(u => u.userId).filter(id => id && id !== 'undefined');
+        
+        if (userIds.length === 0) {
+            console.warn('getGroupSuggestion: No valid user IDs found.');
+            return { features: new Float32Array(58), proposal: {} };
+        }
 
-        let avgBase = new Float32Array(embDim);
-        let maxBase = new Float32Array(embDim).fill(-Infinity);
-        let diversityScore = 0.0;
+        // 1. Fetch real schedules for all members
+        const scheduleMgr = new ScheduleManager();
+        const userSchedules = await scheduleMgr.getBulkSchedules(userIds);
 
-        // "sadece userların normal embdeddingi olucak"
-        const validUsers = users.filter(u => u.profileVector && u.profileVector.length === embDim);
+        // 2. Build aggregated schedule mask (168-dim) and calculate free score
+        // Each slot is 1 (FREE) only if NO user is BUSY at that exact hour of the week.
+        const scheduleMask = new Float32Array(168).fill(1.0);
+        for (const slots of Object.values(userSchedules)) {
+            for (const slot of slots) {
+                if (slot.type === BlockType.BUSY) {
+                    const start = new Date(slot.startTime);
+                    const end = new Date(slot.endTime);
+                    let day = start.getDay() - 1; // 0=Mon
+                    if (day < 0) day = 6;
+                    
+                    const startHour = start.getHours();
+                    const endHour = end.getHours() || 24; // Handle midnight
 
-        if (validUsers.length > 0) {
-            // Calculate avg_base and max_base
-            for (let i = 0; i < embDim; i++) {
-                let sum = 0;
-                for (const u of validUsers) {
-                    const val = u.profileVector[i];
-                    sum += val;
-                    if (val > maxBase[i]) {
-                        maxBase[i] = val;
+                    for (let h = startHour; h < endHour; h++) {
+                        const idx = day * 24 + h;
+                        if (idx >= 0 && idx < 168) scheduleMask[idx] = 0.0;
                     }
                 }
-                avgBase[i] = sum / validUsers.length;
-            }
-
-            // Calculate diversity_score = mean(std(group_base_embs, axis=0))
-            let stdSum = 0;
-            for (let i = 0; i < embDim; i++) {
-                let varianceSum = 0;
-                for (const u of validUsers) {
-                    const diff = u.profileVector[i] - avgBase[i];
-                    varianceSum += diff * diff;
-                }
-                const std = Math.sqrt(varianceSum / validUsers.length);
-                stdSum += std;
-            }
-            diversityScore = stdSum / embDim;
-        } else {
-            maxBase.fill(0); // reset if no users
-        }
-
-        // Mocking group_mask_168 since schedule is not present in User model yet
-        // Simüle edilmiş takvim: Pazartesi - Cuma, 09:00 - 18:00 arası mesai/okul saatini (0) olarak işaretle.
-        const groupMask168 = new Float32Array(168).fill(1);
-        for (let d = 0; d < 5; d++) { // 0=Monday .. 4=Friday
-            for (let h = 9; h < 18; h++) { // 09:00 - 17:59
-                groupMask168[d * 24 + h] = 0;
             }
         }
-        const pCount = numUsers;
-        const actualFreeSlots = groupMask168.reduce((a, b) => a + b, 0);
 
-        // Concatenate all into a single Float32Array of length 939
-        // avg_base(384) + max_base(384) + div_feat(1) + p_count(1) + actual_free_slots(1) + group_mask_168(168) = 939
-        const combined = new Float32Array(939);
-        combined.set(avgBase, 0);
-        combined.set(maxBase, 384);
-        combined.set([diversityScore], 768);
-        combined.set([pCount], 769);
-        combined.set([actualFreeSlots], 770);
-        combined.set(groupMask168, 771);
+        const freeScore = scheduleMask.reduce((a, b) => a + b, 0) / 168.0;
+        const scaledFreeScore = (freeScore - GROUP_FREE_SCORE_MEAN) / GROUP_FREE_SCORE_STD;
 
-        console.log("Group model telefonda hazırlanıyor...");
-        let session;
-        let TensorClass;
-        let finalProposal: PlanProposal = { suggestedTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) };
+        // 3. Build interest matrices
+        const interestMtx: Float32Array[] = users.map(u =>
+            buildInterestsBinary(u.interestTags || [])
+        );
+
+        const avgInterests = new Float32Array(MASTER_52_SORTED.length);
+        for (const vec of interestMtx) {
+            for (let i = 0; i < vec.length; i++) avgInterests[i] += vec[i];
+        }
+        for (let i = 0; i < avgInterests.length; i++) avgInterests[i] /= numUsers;
+
+        // 4. Diversity
+        let divSum = 0;
+        for (let i = 0; i < MASTER_52_SORTED.length; i++) {
+            let varSum = 0;
+            for (const vec of interestMtx) {
+                varSum += (vec[i] - avgInterests[i]) ** 2;
+            }
+            divSum += Math.sqrt(varSum / numUsers);
+        }
+        const diversity = divSum / MASTER_52_SORTED.length;
+
+        // 5. Spatial features
+        const lons = users.map(u => u.locationBased?.coordinates?.longitude ?? 32.815);
+        const lats = users.map(u => u.locationBased?.coordinates?.latitude ?? 39.900);
+        const avgLon = lons.reduce((a, b) => a + b, 0) / numUsers;
+        const avgLat = lats.reduce((a, b) => a + b, 0) / numUsers;
+        const scaledAvgLon = (avgLon - USER_LON_MEAN) / USER_LON_STD;
+        const scaledAvgLat = (avgLat - USER_LAT_MEAN) / USER_LAT_STD;
+
+        let maxGeoSpread = 0;
+        for (let i = 0; i < numUsers; i++) {
+            const d = Math.sqrt((lons[i] - avgLon) ** 2 + (lats[i] - avgLat) ** 2);
+            if (d > maxGeoSpread) maxGeoSpread = d;
+        }
+        const scaledGeoSpread = (maxGeoSpread - GROUP_SPREAD_MEAN) / GROUP_SPREAD_STD;
+
+        const pCount = Math.log1p(numUsers);
+
+        // ──────────────────────────────────────────────────────────────────
+        // 6. Assemble scalar_input (58-dim)
+        const scalarInput = new Float32Array(58);
+        scalarInput.set(avgInterests, 0); // 52
+        scalarInput[52] = diversity;      // 1
+        scalarInput[53] = scaledAvgLon;   // 1
+        scalarInput[54] = scaledAvgLat;   // 1
+        scalarInput[55] = pCount;         // 1
+        scalarInput[56] = scaledGeoSpread; // 1
+        scalarInput[57] = scaledFreeScore; // 1
+
+        let finalProposal: PlanProposal = {
+            suggestedTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        };
 
         try {
-            if (Platform.OS === 'web') throw new Error("ONNX not supported on web");
+            if (Platform.OS === 'web') throw new Error('ONNX not supported on web');
 
-            const modelAsset = await Asset.loadAsync(require('../../assets/models/gatherup_group_model_final.onnx'));
+            const modelAsset = await Asset.loadAsync(
+                require('../../assets/models/gatherup_group_model.onnx')
+            );
             const modelUri = modelAsset[0].localUri || modelAsset[0].uri;
-
-            if (!modelUri) {
-                throw new Error("Grup modelinin yerel adresi bulunamadı!");
-            }
+            if (!modelUri) throw new Error('Group model URI not found');
 
             const ONNX = require('onnxruntime-react-native');
-            session = await ONNX.InferenceSession.create(modelUri);
-            TensorClass = ONNX.Tensor;
+            const session = await ONNX.InferenceSession.create(modelUri);
+            const TensorClass = ONNX.Tensor;
 
-            console.log("Veriler grup modeline sokuluyor (939 boyutlu)...");
-            const tensor = new TensorClass('float32', combined, [1, 939]);
+            const scalarTensor = new TensorClass('float32', scalarInput, [1, 58]);
+            const scheduleTensor = new TensorClass('float32', scheduleMask, [1, 168]);
 
-            const inputName = session.inputNames[0];
-            const feeds: any = {};
-            feeds[inputName] = tensor;
+            const results = await session.run({
+                scalar_input: scalarTensor,
+                schedule_input: scheduleTensor,
+            });
 
-            const results = await session.run(feeds);
+            // ── Extract Logits ──────────────────────────────────────────────
+            let catLogits: Float32Array = results['category_logits']?.data as Float32Array
+                ?? (results[Object.keys(results)[0]]?.data as Float32Array);
+            let dayLogits: Float32Array = results['day_logits']?.data as Float32Array
+                ?? (results[Object.keys(results)[1]]?.data as Float32Array);
+            let hourLogits: Float32Array = results['hour_logits']?.data as Float32Array
+                ?? (results[Object.keys(results)[2]]?.data as Float32Array);
 
-            // Extract tensors carefully depending on possible string names or just keys
-            const outKeys = Object.keys(results);
-            // Default mapping assuming order: cat, day, hour. Adjust if your names are different.
-            let catLogits: Float32Array = results[outKeys[0]].data as Float32Array;
-            let dayLogits: Float32Array = results[outKeys[1]].data as Float32Array;
-            let hourLogits: Float32Array = results[outKeys[2]].data as Float32Array;
-
-            // Optional: try matching by names like 'cat', 'day', 'hour' if they exist
-            for (const key of outKeys) {
-                if (key.includes('cat')) catLogits = results[key].data as Float32Array;
-                if (key.includes('day')) dayLogits = results[key].data as Float32Array;
-                if (key.includes('hour')) hourLogits = results[key].data as Float32Array;
-            }
-
-            // ─── Post-Processing: Softmax & Masking (Based on suggest_quality_plan_v4_detailed) ───
-            const softmax = (arr: Float32Array) => {
+            const softmax = (arr: Float32Array): number[] => {
                 const max = Math.max(...Array.from(arr));
                 const exps = Array.from(arr).map(x => Math.exp(x - max));
                 const sum = exps.reduce((a, b) => a + b, 0);
@@ -185,307 +347,301 @@ export class RecommendationEngine {
             const dayProbs = softmax(dayLogits);
             const hourProbs = softmax(hourLogits);
 
-            // Get Current Time to form future_mask
+            // ── Business Logic: Soft Masking + Time Bonus Matrix ──────────────
             const now = new Date();
-            // JS getDay(): 0=Sun, 1=Mon...6=Sat. Math logic assumes 0=Mon, 6=Sun.
             let currentDayIdx = now.getDay() - 1;
             if (currentDayIdx < 0) currentDayIdx = 6;
-            const currentHourIdx = now.getHours();
+            const currentHour = now.getHours();
 
-            let bestScore = -1;
-            let bestIdx = -1;
-            let isNextWeek = false;
-
+            const finalScores = new Float32Array(168);
             for (let d = 0; d < 7; d++) {
                 for (let h = 0; h < 24; h++) {
                     const idx = d * 24 + h;
-                    const wMask = groupMask168[idx];
-                    const sMask = (h >= 11 && h < 21) ? 1.0 : 0.0; // strict_social_mask
-                    const fMask = (d > currentDayIdx || (d === currentDayIdx && h > currentHourIdx)) ? 1.0 : 0.0; // future_mask
+                    
+                    // 1. Raw match score
+                    let score = dayProbs[d] * hourProbs[h];
+                    
+                    // 2. Schedule Mask (Everyone Free = 1, Anyone Busy = 0)
+                    score *= scheduleMask[idx];
 
-                    const score = dayProbs[d] * hourProbs[h] * wMask * sMask * fMask;
-
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestIdx = idx;
+                    // 3. Current Time Mask (Don't suggest the past)
+                    if (d < currentDayIdx || (d === currentDayIdx && h <= currentHour)) {
+                        score *= 0.1; // Penalty for past/immediate slots to force "Next Week" fallback if needed
                     }
+
+                    // 4. Time Bonus Matrix
+                    let bonus = 1.0;
+                    if (d < 5 && h >= 18 && h < 23) bonus = 1.20; // Weekday Evening
+                    else if (d >= 5 && h >= 12 && h < 23) bonus = 1.30; // Weekend Afternoon/Evening
+                    if (h >= 1 && h < 9) bonus = 0.20; // Night Penalty
+
+                    finalScores[idx] = score * bonus;
                 }
             }
 
-            // Fallback for next week if no valid slots this week
-            if (bestScore <= 1e-6) {
-                isNextWeek = true;
-                bestScore = -1;
-                for (let d = 0; d < 7; d++) {
-                    for (let h = 0; h < 24; h++) {
-                        const idx = d * 24 + h;
-                        const wMask = groupMask168[idx];
-                        const sMask = (h >= 11 && h < 21) ? 1.0 : 0.0;
-
-                        const score = dayProbs[d] * hourProbs[h] * wMask * sMask;
-
-                        if (score > bestScore) {
-                            bestScore = score;
-                            bestIdx = idx;
-                        }
-                    }
+            let bestIdx = -1;
+            let maxScore = -1;
+            for (let i = 0; i < 168; i++) {
+                if (finalScores[i] > maxScore) {
+                    maxScore = finalScores[i];
+                    bestIdx = i;
                 }
             }
+
+            // Fallback if everyone is busy 24/7 (should be rare)
+            if (bestIdx === -1) bestIdx = currentDayIdx * 24 + ((currentHour + 2) % 24);
 
             const resDay = Math.floor(bestIdx / 24);
             const resHour = bestIdx % 24;
 
-            const catClasses = Object.values(EVENT_CLUSTERS).flat();
-            let maxCatVal = -Infinity;
-            let maxCatIdx = 0;
-            for (let i = 0; i < catLogits.length; i++) {
-                if (catLogits[i] > maxCatVal) {
-                    maxCatVal = catLogits[i];
-                    maxCatIdx = i;
-                }
-            }
+            // ── Top-3 Category Logic ─────────────────────────────────────────
+            const catWithIdx = Array.from(catLogits).map((v, i) => ({ v, i }));
+            catWithIdx.sort((a, b) => b.v - a.v);
+            const top3CatNames = catWithIdx.slice(0, 3).map(x => MASTER_52_SORTED[x.i]);
+            
+            const predictedSubCat = top3CatNames[0];
+            const predictedCat = CLUSTER_MAP[predictedSubCat] || 'Social_Career';
 
-            const randomActivityTitle = catClasses[maxCatIdx] || 'Gönüllülük';
-
-            let catName = 'Sosyal_Kariyer';
-            for (const [cat, subCats] of Object.entries(EVENT_CLUSTERS)) {
-                if (subCats.includes(randomActivityTitle)) {
-                    catName = cat;
-                    break;
-                }
-            }
-
+            // Resolve target date
             const targetTime = new Date(now);
             let daysToAdd = resDay - currentDayIdx;
-            if (isNextWeek || daysToAdd <= 0) daysToAdd += 7; // if in the past or exactly now, push to next week if isNextWeek
-
+            if (daysToAdd < 0 || (daysToAdd === 0 && resHour <= currentHour)) daysToAdd += 7;
             targetTime.setDate(targetTime.getDate() + daysToAdd);
             targetTime.setHours(resHour, 0, 0, 0);
 
-            console.log("=".repeat(80));
-            console.log(`🚀 MODEL SUGGESTION : Day ${resDay} at ${resHour}:00 (${isNextWeek ? 'Next Week' : 'This Week'})`);
-            console.log(`✨ ACTIVITY TYPE : ${catName} -> ${randomActivityTitle}`);
+            console.log(`🚀 GROUP GEN → ${predictedSubCat} on ${targetTime.toDateString()} at ${resHour}:00`);
+            console.log(`✨ TOP-3 Suggestions: ${top3CatNames.join(' | ')}`);
 
             finalProposal = {
                 suggestedTime: targetTime,
-                suggestedCategory: randomActivityTitle,
-                suggestedSubCategory: randomActivityTitle,
-                suggestedTitle: randomActivityTitle,
-                suggestedTags: ''
+                suggestedCategory: predictedCat,
+                suggestedSubCategory: predictedSubCat,
+                suggestedTitle: predictedSubCat,
+                suggestedTags: top3CatNames.slice(1).join(', '),
             };
 
+            // ── Phase 3: Post-Inference Real Event Matching ───────────────────
+            console.log('🔍 Searching for matching real events...');
+            const supabase = SupabaseClient.getInstance().client;
+            
+            // Search range: ±12 hours around suggested time
+            const timeLower = new Date(targetTime.getTime() - 12 * 60 * 60 * 1000).toISOString();
+            const timeUpper = new Date(targetTime.getTime() + 12 * 60 * 60 * 1000).toISOString();
+
+            const { data: realEvents, error: searchError } = await supabase
+                .from('events')
+                .select('*')
+                .eq('sub_category', predictedSubCat)
+                .eq('status', 'UPCOMING')
+                .gte('start_time', timeLower)
+                .lte('start_time', timeUpper)
+                .limit(5);
+
+            if (!searchError && realEvents && realEvents.length > 0) {
+                console.log(`✅ Found ${realEvents.length} matching real events!`);
+                finalProposal.matchingEvents = realEvents.map((ev: any) => this.mapToEvent(ev));
+            }
+
         } catch (e) {
-            console.error("Grup modeli ONNX hata aldı:", e);
+            console.error('Group model ONNX error:', e);
         }
 
-        return {
-            features: combined,
-            proposal: finalProposal // Updated with actual model results
-        };
+        return { features: scalarInput, proposal: finalProposal };
     }
 
     /**
-     * Scoring: 1. calculateSimilarity. 2. Add Context Boost (Proximity + Popularity).
-     * 3. Sort Descending. 
+     * Fetches personalized events using the Two-Tower User Tower.
+     *
+     * User Tower inputs (6 tensors):
+     *   interests  (1, 52)           — binary interest tag vector
+     *   context    (1, 7)            — archetype one-hot (5) + scaled lon/lat (2)
+     *   count      (1, 1)            — log1p(past event count)
+     *   hist_norm  (1, 1)            — L2 norm of history sequence
+     *   hist_seq   (1, MAX_HIST, 7)  — per-event 7-dim numeric features (GRU input)
+     *   hist_len   (1,)              — actual sequence length (long)
+     *
+     * Output: user_vector (1, 128) — cosine-comparable with event embeddings
      */
-    public rankEvents(candidates: Event[], userVec: number[]): Event[] {
-        return candidates; // Stub for ranking logic
-    }
-    // 📍 Haversine Formülü: Mesafe hesaplama (KM)
-    private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-        const R = 6371;
-        const dLat = (lat2 - lat1) * (Math.PI / 180);
-        const dLon = (lon2 - lon1) * (Math.PI / 180);
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-    }
-
-    // 🧮 Vektör Havuzlama (Pooling): 384 x 3 = 1152 boyut üretir
-    private calculateHistoryPoolings(historyEmbeddings: number[][]): number[] {
-        const dim = 384;
-        if (!historyEmbeddings || historyEmbeddings.length === 0) {
-            return new Array(dim * 3).fill(0);
-        }
-
-        const meanPool = new Array(dim).fill(0);
-        const maxPool = new Array(dim).fill(-Infinity);
-        const stdPool = new Array(dim).fill(0);
-
-        for (let i = 0; i < dim; i++) {
-            let sum = 0;
-            for (let j = 0; j < historyEmbeddings.length; j++) {
-                const val = historyEmbeddings[j][i];
-                sum += val;
-                if (val > maxPool[i]) maxPool[i] = val;
-            }
-            meanPool[i] = sum / historyEmbeddings.length;
-        }
-
-        for (let i = 0; i < dim; i++) {
-            let varianceSum = 0;
-            for (let j = 0; j < historyEmbeddings.length; j++) {
-                const diff = historyEmbeddings[j][i] - meanPool[i];
-                varianceSum += diff * diff;
-            }
-            stdPool[i] = Math.sqrt(varianceSum / historyEmbeddings.length);
-        }
-
-        return [...meanPool, ...maxPool, ...stdPool];
-    }
-
-    public async fetchRecommendedEvents(userId: string, userLat: number, userLon: number): Promise<Event[]> {
+    public async fetchRecommendedEvents(
+        userId: string,
+        userLat: number,
+        userLon: number
+    ): Promise<Event[]> {
         try {
-            // 1. Supabase Singleton nesnesine erişim
             const supabase = SupabaseClient.getInstance().client;
 
-            console.log("1. Supabase'den kullanıcı verileri çekiliyor...");
+            // 1. Fetch user profile
+            console.log('1. Fetching user profile...');
             const { data: userProfile, error: profileError } = await supabase
                 .from('users')
-                .select('profile_vector, past_events')
+                .select('interest_tags, past_events, base_location')
                 .eq('id', userId)
                 .single();
 
-            if (profileError || !userProfile) throw new Error("Kullanıcı bulunamadı veya profil çekilemedi.");
+            if (profileError || !userProfile) {
+                console.error('Profile fetch failed:', profileError);
+                throw new Error('User not found or profile fetch failed.');
+            }
 
-            // 2. Geçmiş Etkinlik Vektörlerini Çek
-            let historyEmbeddings: number[][] = [];
-            if (userProfile.past_events && userProfile.past_events.length > 0) {
-                const { data: eventVectors, error: eventError } = await supabase
-                    .from('events')
-                    .select('sbert_vec')
-                    .in('id', userProfile.past_events);
+            const interestTags: string[] = userProfile.interest_tags || [];
+            const pastEventIds: string[] = userProfile.past_events || [];
 
-                if (!eventError && eventVectors) {
-                    historyEmbeddings = eventVectors.map((row: any) =>
-                        typeof row.sbert_vec === 'string' ? JSON.parse(row.sbert_vec) : row.sbert_vec
-                    ).filter((v: any) => v !== null);
+            // Use DB coords from base_locations table if available
+            let lat = userLat;
+            let lon = userLon;
+
+            if (userProfile.base_location) {
+                console.log(`1.1. Resolving coordinates for: ${userProfile.base_location}`);
+                const { data: locData, error: locError } = await supabase
+                    .from('base_locations')
+                    .select('latitude, longitude')
+                    .eq('label', userProfile.base_location)
+                    .single();
+
+                if (!locError && locData) {
+                    lat = locData.latitude;
+                    lon = locData.longitude;
+                    console.log(`📍 Resolved DB coords: ${lat}, ${lon}`);
+                } else {
+                    console.warn(`Could not resolve coordinates from DB for ${userProfile.base_location}, using fallbacks.`);
                 }
             }
 
-            // 3. Özellikleri Birleştir (1152 + 384 = 1536)
-            const historyVector_1152 = this.calculateHistoryPoolings(historyEmbeddings);
-            const profileVector_384 = typeof userProfile.profile_vector === 'string'
-                ? JSON.parse(userProfile.profile_vector)
-                : userProfile.profile_vector;
+            // 2. Generate user_vector using local ONNX inference
+            console.log('2. Running user tower inference (ONNX)...');
+            const userVector = await VectorService.getInstance().runUserTowerInference(userId);
+            console.log('3. User vector produced, dim:', userVector.length);
 
-            if (!profileVector_384 || profileVector_384.length !== 384) {
-                console.warn("Kullanıcı profil vektörü henüz oluşturulmamış. Öneri sistemi atlanıyor.");
+            // Auto-sync profile_vector to DB asynchronously
+            VectorService.getInstance().generateUserEmbedding(userId)
+                .catch(e => console.warn("Background embedding sync failed:", e));
+
+            // 7. Vector search via Supabase RPC
+            console.log('6. Querying match_events RPC...');
+            
+            const { data: topEvents, error: matchError } = await supabase.rpc('match_events', {
+                query_embedding: userVector, // Passing array directly for better type handling
+                match_threshold: 0.05,
+                match_count: 500,
+            });
+
+            if (matchError) {
+                console.error('match_events RPC Error:', JSON.stringify(matchError, null, 2));
+                throw matchError;
+            }
+            console.log(`6.1. match_events returned ${topEvents?.length || 0} candidates.`);
+
+            if (!topEvents || topEvents.length === 0) {
+                console.log('✅ Pipeline complete. Suggestions: 0 (No vector matches)');
                 return [];
             }
 
-            const finalUserFeatures_1536 = [...historyVector_1152, ...profileVector_384];
+            // ─── Phase 2: Fetch full details for these IDs ─────────────────────────
+            const candidateIds = topEvents.map((r: any) => r.id);
+            const similarityMap = new Map<string, number>(
+                topEvents.map((r: any) => [r.id, r.similarity || 0])
+            );
 
-            console.log("2. Model telefonda hazırlanıyor...");
-            // Expo Asset ile modeli uygulamanın içinden güvenle okuyoruz
-            const modelAsset = await Asset.loadAsync(require('../../assets/models/user_tower_final.onnx'));
-            const modelUri = modelAsset[0].localUri || modelAsset[0].uri;
+            console.log('6.2. Fetching full event records for candidates...');
+            const { data: fullEvents, error: fetchError } = await supabase
+                .from('events')
+                .select('*')
+                .in('id', candidateIds);
 
-            if (!modelUri) {
-                throw new Error("Modelin yerel adresi bulunamadı!");
+            if (fetchError) {
+                console.error('Full events fetch failed:', fetchError);
+                throw fetchError;
             }
 
-            console.log("3. Veriler modele sokuluyor...");
+            // 8. Re-rank: Hybrid Scoring (Interest Bonus %25) + Distance Boost + Subcategory Diversity
+            console.log('7. Re-ranking results (OPEN only, hybrid scoring, max 2 per sub, top 10)...');
+            const scored = [];
+            const activeInterests = new Set(interestTags);
 
-            let session;
-            let TensorClass;
+            for (const event of (fullEvents || [])) {
+                // Sadece UPCOMING olanları al (DB fonksiyonuyla uyumlu)
+                const status = (event.status ?? '').toUpperCase();
+                if (status !== 'UPCOMING') continue;
 
-            try {
-                if (Platform.OS === 'web') throw new Error("ONNX not supported on web");
-                const ONNX = require('onnxruntime-react-native');
-                session = await ONNX.InferenceSession.create(modelUri);
-                TensorClass = ONNX.Tensor;
-            } catch (e) {
-                console.error("ONNX Runtime initialization failed:", e);
-                throw new Error("Öneri motoru başlatılamadı.");
-            }
+                // Merge similarity back from the RPC result
+                let similarity = similarityMap.get(event.id) || 0;
+                let baseScore = similarity;
+                const sub = (event.sub_category ?? '').trim();
 
-            // 1536'lık dizini Float32 formatına çevir
-            const float32Data = new Float32Array(finalUserFeatures_1536);
-            const tensor = new TensorClass('float32', float32Data, [1, 1536]);
+                // İŞ MANTIĞI: Kullanıcının aktif ilgi alanına giriyorsa %25 Bonus
+                if (activeInterests.has(sub)) {
+                    baseScore = baseScore * 1.25;
+                }
 
-            // Modeli çalıştır
-            const results = await session.run({ user_input: tensor });
+                let finalScore = baseScore;
+                // Use latitude/longitude or location_lat/location_lng depending on table schema
+                const evLat = event.latitude ?? event.location_lat ?? 0;
+                const evLon = event.longitude ?? event.location_lng ?? 0;
 
-            // Çıkan 256'lık final vektörünü al ve TypeScript hatasını çözmek için Float32Array'a çevir!
-            const userVectorArray = Array.from(results.user_vector.data as Float32Array);
-            console.log("4. Vektör başarıyla üretildi! Uzunluk:", userVectorArray.length);
+                const distKm = haversineKm(userLat, userLon, evLat, evLon);
+                if (distKm < 2.0) finalScore += 0.15;
+                else if (distKm > 15.0) finalScore -= 0.20;
 
-            console.log("5. Supabase'den eşleşen etkinlikler isteniyor...");
-            // Veritabanındaki rpc fonksiyonu için vektörü string formatına dönüştürüyoruz
-            const vectorString = `[${userVectorArray.join(',')}]`;
-
-            const { data: top50Events, error: matchError } = await supabase.rpc('match_events', {
-                query_embedding: vectorString,
-                match_threshold: 0.1, // Varsayılan eşleşme sınırı
-                match_count: 50 // Mesafe filtresinden geçebileceği için sayı fazla tutuldu
-            });
-
-            if (matchError) throw matchError;
-
-            console.log("6. Eşleşen etkinlikler uzaklığa göre yeniden sıralanıyor (Re-ranking)...");
-
-            const maxPerLocation = 2; // Bir adresten en fazla 2 etkinlik öner
-            const locationCounts: Record<string, number> = {};
-            const finalRecommendations = [];
-
-            for (const event of top50Events) {
-                const locKey = `${event.location_lat},${event.location_lng}`;
-                if (locationCounts[locKey] >= maxPerLocation) continue;
-
-                let finalScore = event.similarity;
-                const distanceKm = this.calculateDistance(userLat, userLon, event.location_lat, event.location_lng);
-
-                // Mesafe Puanlaması (LLD Context Rules)
-                if (distanceKm < 2.0) finalScore += 0.15;
-                else if (distanceKm > 15.0) finalScore -= 0.20;
-
-                // Front-end'de direkt listeleyebilmek için distance ve score nesneye dahil ediliyor
-                finalRecommendations.push({
+                scored.push({
                     ...event,
-                    distanceKm: Number(distanceKm.toFixed(2)),
-                    matchScore: Number(finalScore.toFixed(3)),
+                    similarity, // ensure similarity is inside for mapToEvent
+                    distanceKm: +distKm.toFixed(2),
+                    matchScore: +finalScore.toFixed(3)
                 });
-
-                locationCounts[locKey] = (locationCounts[locKey] || 0) + 1;
             }
 
-            // Final skorlarına göre en büyükten küçüğe sırala ve en iyi 10'u seç
-            finalRecommendations.sort((a, b) => b.matchScore - a.matchScore);
-            const top10Raw = finalRecommendations.slice(0, 10);
+            scored.sort((a, b) => b.matchScore - a.matchScore);
 
-            // Supabase sonuçlarını Event sınıfına map'le
-            const top10 = top10Raw.map(event => this.mapToEvent(event));
+            const picked: typeof scored = [];
+            const subcatCounts: Record<string, number> = {};
+            const TOP_K = 3;
 
-            console.log("✅ Pipeline tamamlandı! Önerilen etkinlik sayısı:", top10.length);
-            return top10;
+            for (const event of scored) {
+                const sub = (event.sub_category ?? '').trim();
+                const count = subcatCounts[sub] || 0;
+
+                // Maksimum çeşitlilik için her alt kategoriden sadece 1 tane al
+                if (count < 1) {
+                    picked.push(event);
+                    subcatCounts[sub] = count + 1;
+                }
+
+                if (picked.length === TOP_K) break;
+            }
+
+            const suggestions = picked.map(ev => this.mapToEvent(ev));
+            console.log(`✅ Pipeline complete. Suggestions: ${suggestions.length}`);
+            return suggestions;
 
         } catch (error) {
-            console.error("Öneri sistemi hatası:", error);
+            console.error('Recommendation engine error:', error);
             return [];
         }
     }
 
+    public rankEvents(candidates: Event[], userVec: number[]): Event[] {
+        return candidates;
+    }
+
     /**
-     * Maps flat RPC result to rich Event object.
+     * Maps flat Supabase RPC result row to a rich Event domain object.
      */
     private mapToEvent(row: any): Event {
-        // Construct Location object
         const location = new Location(
             row.location_id || 'unknown',
             row.location_name || 'Generic Location',
-            { latitude: row.location_lat, longitude: row.location_lng },
+            {
+                latitude: row.latitude ?? row.location_lat ?? 39.900,
+                longitude: row.longitude ?? row.location_lng ?? 32.815
+            },
             (row.location_type as LocationType) || LocationType.CAFE
         );
 
-        // Construct TimeSlot object
         const timeSlot = new TimeSlot(
             row.slot_id || 'temp-slot',
             row.organizer_id || 'system',
             new Date(row.start_time || Date.now()),
-            new Date(row.end_time || (Date.now() + 3600000)),
+            new Date(row.end_time || Date.now() + 3_600_000),
             BlockType.BUSY,
             DataSource.MANUAL
         );
@@ -506,8 +662,6 @@ export class RecommendationEngine {
             (row.status as EventStatus) || EventStatus.ONGOING
         );
 
-        // Add dynamic properties for UI display (though not in the formal Event class properties, 
-        // they are injected for the search results in this context)
         (event as any).distanceKm = row.distanceKm;
         (event as any).matchScore = row.matchScore;
 

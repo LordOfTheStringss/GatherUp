@@ -81,6 +81,10 @@ export class EventManager {
             maxCapacity: eventData.max_capacity,
             description: eventData.description
         }).catch((e: any) => console.error("Failed to generate event embedding:", e));
+        
+        // Sync user embedding for organizer (history changed)
+        VectorService.getInstance().generateUserEmbedding(organizerId)
+            .catch((e: any) => console.error("Failed to update organizer embedding after creation:", e));
 
         return data;
     }
@@ -229,7 +233,7 @@ export class EventManager {
 
             const participatedEventIds = (myParticipations || []).map((p: any) => p.event_id);
 
-            const allowedPrivateIds = [...new Set([...invitedEventIds, ...participatedEventIds])];
+            const allowedPrivateIds = Array.from(new Set([...invitedEventIds, ...participatedEventIds]));
             const privateIdsString = allowedPrivateIds.length > 0 ? `,id.in.(${allowedPrivateIds.join(',')})` : '';
 
             // Visibility condition: Event is PUBLIC, OR I am the organizer, OR I have explicit access (invited/joined)
@@ -355,7 +359,9 @@ export class EventManager {
                 );
             }
         }
-
+        // 5. Trigger user embedding update (history changed)
+        VectorService.getInstance().generateUserEmbedding(userId)
+            .catch((e: any) => console.error("Failed to update user embedding after joining event:", e));
     }
     public async getEventParticipants(eventId: string): Promise<any[]> {
         const { data, error } = await this.supabaseClient.client

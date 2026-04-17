@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
-import { Alert, Platform, View, Modal, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform, View, Modal, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import React, { useEffect, useState } from 'react';
+import { Event } from '../../src/core/event/Event';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthManager } from '../../src/core/identity/AuthManager';
 import { UserManager } from '../../src/core/identity/UserManager';
@@ -40,6 +41,10 @@ export default function TabLayout() {
     const [inviteModalVisible, setInviteModalVisible] = useState(false);
     const [currentInvite, setCurrentInvite] = useState<any>(null);
     const [eventDetails, setEventDetails] = useState<any>(null);
+
+    // ── One-Tap Suggestion Modal state ────────────────────────────────────
+    const [suggestModalVisible, setSuggestModalVisible] = useState(false);
+    const [suggestions, setSuggestions] = useState<Event[]>([]);
 
     const fetchEventDetails = async (eventId: string) => {
         try {
@@ -245,31 +250,10 @@ export default function TabLayout() {
                             setGlobalLoading(false);
 
                             if (recommendations && recommendations.length > 0) {
-                                // Prepare the message with all recommended events
-                                let message = "We found these events you might like:\n\n";
-                                recommendations.forEach((event: any, index: number) => {
-                                    message += `${index + 1}. ${event.title}\n`;
-                                    message += `📍 ${event.location_id || 'Location TBA'} (${event.distanceKm} km)\n`;
-                                    message += `🎯 Score: ${event.matchScore}\n\n`;
-                                });
-
-                                // Truncate if too long (Alerts have length limits on some platforms)
-                                if (message.length > 800) {
-                                    message = message.substring(0, 800) + '...\n\n(Showing top results)';
-                                }
-
-                                const topEvent = recommendations[0];
-
-                                Alert.alert(
-                                    "✨ AI Matches Found!",
-                                    message,
-                                    [
-                                        { text: "Dismiss", style: "cancel" },
-                                        { text: `View Top Result`, onPress: () => router.push(`/event/${topEvent.eventId}`) }
-                                    ]
-                                );
+                                setSuggestions(recommendations as Event[]);
+                                setSuggestModalVisible(true);
                             } else {
-                                showToast('No new recommendations found.', 'info');
+                                showToast('No open events found nearby. Try again later!', 'info');
                             }
                         } catch (error) {
                             setGlobalLoading(false);
@@ -325,6 +309,121 @@ export default function TabLayout() {
             />
         </Tabs>
 
+        {/* ── One-Tap Suggestion Modal ──────────────────────────────── */}
+        <Modal
+            visible={suggestModalVisible}
+            animationType="slide"
+            transparent
+            onRequestClose={() => setSuggestModalVisible(false)}
+        >
+            <View style={styles.suggestOverlay}>
+                {/* Tap-outside to dismiss */}
+                <TouchableOpacity
+                    style={StyleSheet.absoluteFillObject}
+                    onPress={() => setSuggestModalVisible(false)}
+                    activeOpacity={1}
+                />
+
+                <View style={[styles.suggestSheet, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                    {/* Handle */}
+                    <View style={[styles.suggestHandle, { backgroundColor: theme.cardBorder }]} />
+
+                    {/* Header */}
+                    <View style={styles.suggestHeader}>
+                        <View style={[styles.suggestHeaderIcon, { backgroundColor: theme.primaryLight }]}>
+                            <Ionicons name="sparkles" size={22} color={theme.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.suggestTitle, { color: theme.textPrimary }]}>AI Picks For You</Text>
+                            <Text style={[styles.suggestSubtitle, { color: theme.textSecondary }]}>
+                                3 open events matched to your interests
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setSuggestModalVisible(false)} style={styles.suggestClose}>
+                            <Ionicons name="close" size={20} color={theme.textSecondary} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Suggestion Cards */}
+                    <ScrollView
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={{ paddingBottom: 8 }}
+                    >
+                        {suggestions.map((event: any, index: number) => {
+                            const cardColors = [
+                                { bg: '#1A1F3A', accent: '#6C63FF', badge: '#2D2A5E' },
+                                { bg: '#1A2E2A', accent: '#00C896', badge: '#1A3D34' },
+                                { bg: '#2E1A1A', accent: '#FF6B6B', badge: '#3D1A1A' },
+                            ];
+                            const c = cardColors[index % 3];
+                            const score = Math.round((event.matchScore ?? 0) * 100);
+                            const dist  = event.distanceKm ?? '—';
+                            const sub   = event.subCategory || event.sub_category || '';
+                            const cat   = event.category || '';
+
+                            return (
+                                <View key={event.eventId ?? index} style={[styles.suggestCard, { backgroundColor: c.bg, borderColor: c.accent + '40' }]}>
+                                    {/* Rank badge */}
+                                    <View style={[styles.suggestRank, { backgroundColor: c.accent }]}>
+                                        <Text style={styles.suggestRankText}>#{index + 1}</Text>
+                                    </View>
+
+                                    {/* Category chip */}
+                                    <View style={[styles.suggestChip, { backgroundColor: c.badge }]}>
+                                        <Text style={[styles.suggestChipText, { color: c.accent }]}>
+                                            {sub || cat || 'Event'}
+                                        </Text>
+                                    </View>
+
+                                    {/* Title */}
+                                    <Text style={styles.suggestEventTitle} numberOfLines={2}>
+                                        {event.title || 'Exciting Event'}
+                                    </Text>
+
+                                    {/* Meta row */}
+                                    <View style={styles.suggestMeta}>
+                                        <View style={styles.suggestMetaItem}>
+                                            <Ionicons name="location-outline" size={13} color="#AAA" />
+                                            <Text style={styles.suggestMetaText}>{dist} km away</Text>
+                                        </View>
+                                        <View style={styles.suggestMetaItem}>
+                                            <Ionicons name="time-outline" size={13} color="#AAA" />
+                                            <Text style={styles.suggestMetaText}>
+                                                {event.timeSlot?.startTime
+                                                    ? new Date(event.timeSlot.startTime).toLocaleString('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+                                                    : 'Open'}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Score bar */}
+                                    <View style={styles.suggestScoreRow}>
+                                        <Text style={styles.suggestScoreLabel}>Match</Text>
+                                        <View style={[styles.suggestScoreTrack, { backgroundColor: c.badge }]}>
+                                            <View style={[styles.suggestScoreFill, { width: `${score}%` as any, backgroundColor: c.accent }]} />
+                                        </View>
+                                        <Text style={[styles.suggestScoreValue, { color: c.accent }]}>{score}%</Text>
+                                    </View>
+
+                                    {/* View button */}
+                                    <TouchableOpacity
+                                        style={[styles.suggestViewBtn, { backgroundColor: c.accent }]}
+                                        onPress={() => {
+                                            setSuggestModalVisible(false);
+                                            router.push(`/event/${event.eventId}`);
+                                        }}
+                                    >
+                                        <Text style={styles.suggestViewBtnText}>View Event</Text>
+                                        <Ionicons name="arrow-forward" size={16} color="#FFF" />
+                                    </TouchableOpacity>
+                                </View>
+                            );
+                        })}
+                    </ScrollView>
+                </View>
+            </View>
+        </Modal>
+
         {/* Global Invite Modal */}
         <Modal visible={inviteModalVisible} animationType="slide" transparent={true}>
             <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
@@ -379,3 +478,156 @@ export default function TabLayout() {
         </>
     );
 }
+
+const styles = StyleSheet.create({
+    // ── Suggestion Modal ──────────────────────────────────────────────────────
+    suggestOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.65)',
+    },
+    suggestSheet: {
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        borderWidth: 1,
+        paddingHorizontal: 20,
+        paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+        paddingTop: 12,
+        maxHeight: '88%',
+    },
+    suggestHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginBottom: 20,
+    },
+    suggestHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 20,
+    },
+    suggestHeaderIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    suggestTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+    },
+    suggestSubtitle: {
+        fontSize: 13,
+        marginTop: 2,
+    },
+    suggestClose: {
+        width: 32,
+        height: 32,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    // ── Event Card ────────────────────────────────────────────────────────────
+    suggestCard: {
+        borderRadius: 20,
+        borderWidth: 1,
+        padding: 18,
+        marginBottom: 12,
+        position: 'relative',
+        overflow: 'hidden',
+    },
+    suggestRank: {
+        position: 'absolute',
+        top: 14,
+        right: 14,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    suggestRankText: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: '#FFF',
+    },
+    suggestChip: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 8,
+        marginBottom: 10,
+    },
+    suggestChipText: {
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: 0.4,
+        textTransform: 'uppercase',
+    },
+    suggestEventTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#FFFFFF',
+        marginBottom: 12,
+        paddingRight: 36,
+        lineHeight: 22,
+    },
+    suggestMeta: {
+        flexDirection: 'row',
+        gap: 16,
+        marginBottom: 14,
+    },
+    suggestMetaItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    suggestMetaText: {
+        fontSize: 12,
+        color: '#AAA',
+        fontWeight: '500',
+    },
+    suggestScoreRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 14,
+    },
+    suggestScoreLabel: {
+        fontSize: 11,
+        color: '#888',
+        fontWeight: '600',
+        width: 36,
+    },
+    suggestScoreTrack: {
+        flex: 1,
+        height: 5,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    suggestScoreFill: {
+        height: '100%',
+        borderRadius: 3,
+    },
+    suggestScoreValue: {
+        fontSize: 12,
+        fontWeight: '700',
+        width: 36,
+        textAlign: 'right',
+    },
+    suggestViewBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 12,
+        borderRadius: 14,
+    },
+    suggestViewBtnText: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#FFF',
+    },
+});
