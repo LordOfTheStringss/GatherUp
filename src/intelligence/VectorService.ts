@@ -105,27 +105,71 @@ export class VectorService {
         const TensorClass = ONNX.Tensor;
 
         try {
-            // 1. Fetch User Data (Interests & Archetype)
-            const { data: profile, error: pErr } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('user_id', userId)
-                .single();
-            
+            // 1. Fetch User Data — single query to 'users' table (no separate profiles table)
             const { data: userData, error: uErr } = await supabase
                 .from('users')
-                .select('longitude, latitude, archetype, interest_tags')
+                .select('interest_tags, base_location')
                 .eq('id', userId)
                 .single();
 
-            if (pErr || uErr || !profile || !userData) throw new Error("User data not found for vector sync");
+            if (uErr || !userData) throw new Error("User data not found for vector sync");
+
+            // Resolve coordinates from base_locations lookup table
+            let userLon = 32.815;
+            let userLat = 39.900;
+            if (userData.base_location) {
+                const { data: locData } = await supabase
+                    .from('base_locations')
+                    .select('latitude, longitude')
+                    .eq('label', userData.base_location)
+                    .single();
+                if (locData) {
+                    userLat = locData.latitude;
+                    userLon = locData.longitude;
+                }
+            }
+
+            // Derive archetype from interest_tags (no 'archetype' column in users)
+            const CLUSTER_MAP: Record<string, string> = {
+                Volleyball: 'Sports', Basketball: 'Sports', Football: 'Sports', Tennis: 'Sports',
+                Swimming: 'Sports', Running: 'Sports', Yoga: 'Sports', Pilates: 'Sports',
+                Fitness: 'Sports', Skateboarding: 'Sports', Cycling: 'Sports', Archery: 'Sports',
+                Mountaineering: 'Sports', Boxing: 'Sports', 'Table Tennis': 'Sports',
+                Software: 'Technology_Science', 'Artificial Intelligence': 'Technology_Science',
+                'Data Science': 'Technology_Science', Cybersecurity: 'Technology_Science',
+                Robotics: 'Technology_Science', 'Game Development': 'Technology_Science',
+                Blockchain: 'Technology_Science', Astronomy: 'Technology_Science',
+                Electronics: 'Technology_Science',
+                Theater: 'Arts_Culture', Cinema: 'Arts_Culture', Concert: 'Arts_Culture',
+                Dance: 'Arts_Culture', Painting: 'Arts_Culture', Sculpture: 'Arts_Culture',
+                Literature: 'Arts_Culture', Photography: 'Arts_Culture', Exhibition: 'Arts_Culture',
+                'Stand-up': 'Arts_Culture', Museums: 'Arts_Culture', Opera: 'Arts_Culture',
+                Camping: 'Hobbies_Lifestyle', Chess: 'Hobbies_Lifestyle', Reading: 'Hobbies_Lifestyle',
+                Food: 'Hobbies_Lifestyle', Gastronomy: 'Hobbies_Lifestyle', Gaming: 'Hobbies_Lifestyle',
+                'E-sports': 'Hobbies_Lifestyle', Gardening: 'Hobbies_Lifestyle', Travel: 'Hobbies_Lifestyle',
+                'Foreign Languages': 'Hobbies_Lifestyle', Collecting: 'Hobbies_Lifestyle',
+                'Musical Instruments': 'Hobbies_Lifestyle',
+                Volunteering: 'Social_Career', Networking: 'Social_Career',
+                'Career Days': 'Social_Career', Workshop: 'Social_Career',
+            };
+            const tagList: string[] = userData.interest_tags || [];
+            const catCounts: Record<string, number> = {};
+            for (const tag of tagList) {
+                const cat = CLUSTER_MAP[tag];
+                if (cat) catCounts[cat] = (catCounts[cat] || 0) + 1;
+            }
+            let archetype = 'Hobbies_Lifestyle';
+            let bestCount = -1;
+            for (const [cat, cnt] of Object.entries(catCounts)) {
+                if (cnt > bestCount) { archetype = cat; bestCount = cnt; }
+            }
 
             // 2. Prepare History Sequence
             // We need past events' numeric features
             const MAX_HIST = 10;
             const { data: participations } = await supabase
                 .from('event_participants')
-                .select('event_id, events(latitude, longitude, start_time, end_time)')
+                .select('event_id, events(location_lat, location_lng, start_time, end_time)')
                 .eq('user_id', userId)
                 .order('created_at', { ascending: false })
                 .limit(MAX_HIST);
@@ -154,7 +198,7 @@ export class VectorService {
             // Context: [cluster(5) + scaled_coords(2)]
             const context = new Float32Array(7).fill(0);
             const UPPER_CATEGORIES = ["Sports", "Technology_Science", "Arts_Culture", "Hobbies_Lifestyle", "Social_Career"];
-            const archeIdx = UPPER_CATEGORIES.indexOf(userData.archetype || "Social_Career");
+            const archeIdx = UPPER_CATEGORIES.indexOf(archetype);
             if (archeIdx !== -1) context[archeIdx] = 1.0;
 
             // Scaled coords
@@ -163,8 +207,8 @@ export class VectorService {
             const latMean = USER_COORD_SCALER.mean[1];
             const latStd = USER_COORD_SCALER.scale[1];
 
-            context[5] = ((userData.longitude || 32.815) - lonMean) / lonStd;
-            context[6] = ((userData.latitude || 39.900) - latMean) / latStd;
+            context[5] = (userLon - lonMean) / lonStd;
+            context[6] = (userLat - latMean) / latStd;
 
             const count = new Float32Array([Math.log1p(histLen)]);
             
@@ -204,12 +248,11 @@ export class VectorService {
             const vector = await this.runUserTowerInference(userId);
 
             const { error } = await SupabaseClient.getInstance().client
-                .from('profiles')
+                .from('users')
                 .update({ 
-                    profile_vector: vector,
-                    updated_at: new Date().toISOString()
+                    profile_vector: vector
                 })
-                .eq('user_id', userId);
+                .eq('id', userId);
 
             if (error) throw error;
             console.log(`[VectorService] Success: profile_vector updated.`);

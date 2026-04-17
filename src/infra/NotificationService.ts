@@ -112,6 +112,22 @@ export class NotificationService {
         );
     }
 
+    public async sendMergeProposalNotification(
+        targetUserId: string,
+        proposalId: string,
+        myEventId: string,
+        myEventTitle: string,
+        otherEventTitle: string
+    ): Promise<void> {
+        await this.sendPush(
+            targetUserId,
+            'Benzer Bir Etkinlik Bulundu!',
+            `Senin "${myEventTitle}" etkinliğinle benzer saatlerde "${otherEventTitle}" adlı bir etkinlik var. Birlikte düzenlemek ister misin?`,
+            { proposalId, myEventId, action: 'merge_suggestion' },
+            'merge_suggestion'
+        );
+    }
+
     /**
      * Multicast notification to all participants (e.g., "Event location changed").
      */

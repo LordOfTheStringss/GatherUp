@@ -61,8 +61,17 @@ export default function NotificationsScreen() {
             setGlobalLoading(true);
             const supabase = SupabaseClient.getInstance().client;
             
+            let notifData = notification.data || {};
+            if (typeof notifData === 'string') {
+                try {
+                    notifData = JSON.parse(notifData);
+                } catch (e) {
+                    console.error("Failed to parse notification data", e);
+                }
+            }
+            
             if (notification.type === 'friend_request') {
-                const senderId = notification.data?.senderId;
+                const senderId = notifData.senderId || notifData.sender_id;
                 if (!senderId) throw new Error("Missing sender data");
 
                 if (action === 'accept') {
@@ -77,7 +86,7 @@ export default function NotificationsScreen() {
                     showToast("Friend request declined", "info");
                 }
             } else if (notification.type === 'event_invite') {
-                const eventId = notification.data?.eventId;
+                const eventId = notifData.eventId || notifData.event_id;
                 if (!eventId) throw new Error("Missing event data");
 
                 if (action === 'accept') {
@@ -106,6 +115,36 @@ export default function NotificationsScreen() {
                     showToast("Invitation declined", "info");
                     // Optionally notify organizer 
                 }
+            } else if (notification.type === 'event_merge' || notification.type === 'merge_suggestion') {
+                // Merge proposal accept/reject
+                const proposalId = notifData.proposalId || notifData.proposal_id;
+                if (!proposalId) throw new Error('Merge proposal ID bulunamadı');
+
+                const { EventController } = await import('../../src/controllers/EventController');
+                const { EventManager } = await import('../../src/core/event/EventManager');
+                const { ConflictEngine } = await import('../../src/core/event/ConflictEngine');
+
+                const evController = new EventController(
+                    EventManager.getInstance(),
+                    {} as any,
+                    new ConflictEngine()
+                );
+
+                if (action === 'accept') {
+                    const res = await evController.acceptMerge(proposalId);
+                    if (res.status === 200) {
+                        showToast(res.message || 'Merge kabul edildi!', 'success');
+                    } else {
+                        showToast(res.message || 'Merge kabul edilemedi', 'error');
+                    }
+                } else {
+                    const res = await evController.rejectMerge(proposalId);
+                    if (res.status === 200) {
+                        showToast('Birleşme teklifi reddedildi.', 'info');
+                    } else {
+                        showToast(res.message || 'Reddetme işlemi başarısız', 'error');
+                    }
+                }
             }
 
             // Remove/Update notification locally after action
@@ -122,14 +161,22 @@ export default function NotificationsScreen() {
     const renderItem = ({ item }: { item: any }) => {
         const isRequest = item.type === 'friend_request';
         const isInvite = item.type === 'event_invite';
-        // Only show actions for event invites, NOT for friend requests per user request
-        const hasActions = isInvite;
+        const isMerge = item.type === 'event_merge' || item.type === 'merge_suggestion';
+        // Show actions for event invites and merge proposals
+        const hasActions = isInvite || isMerge;
+
+        let notifData = item.data || {};
+        if (typeof notifData === 'string') {
+            try {
+                notifData = JSON.parse(notifData);
+            } catch (e) {}
+        }
 
         return (
             <View style={[styles.notificationCard, !item.is_read && { backgroundColor: theme.primaryLight + '20' }]}>
                 <View style={[styles.iconContainer, !item.is_read && { backgroundColor: theme.primaryLight }]}>
                     <Ionicons
-                        name={isRequest ? "person-add" : (isInvite ? "mail-unread" : "calendar")}
+                        name={isRequest ? "person-add" : (isInvite ? "mail-unread" : (isMerge ? "git-merge" : "calendar"))}
                         size={24}
                         color={theme.primary}
                     />
@@ -158,7 +205,7 @@ export default function NotificationsScreen() {
                     {isInvite && (
                         <TouchableOpacity 
                             style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center' }}
-                            onPress={() => router.push({ pathname: "/event/[id]", params: { id: item.data?.eventId } })}
+                            onPress={() => router.push({ pathname: "/event/[id]", params: { id: notifData.eventId || notifData.event_id } })}
                         >
                             <Text style={{ color: theme.primary, fontSize: 13, fontWeight: '600' }}>View Event Details</Text>
                             <Ionicons name="chevron-forward" size={14} color={theme.primary} />
