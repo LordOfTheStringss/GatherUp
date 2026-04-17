@@ -35,7 +35,7 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
         ]}>
             <View style={styles.leftContainer}>
                 {onLeftPress && (
-                    <TouchableOpacity onPress={onLeftPress} style={styles.iconBtn} activeOpacity={0.7}>
+                    <TouchableOpacity onPress={onLeftPress} style={styles.iconBtn} activeOpacity={0.7} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
                         <Ionicons name={leftIcon as any} size={28} color={theme.textPrimary} />
                     </TouchableOpacity>
                 )}
@@ -66,7 +66,7 @@ const createStyles = (theme: ThemeColors, insets: any) => StyleSheet.create({
         paddingHorizontal: 16,
         paddingBottom: 16,
         // Handling safe area top inset + minimum padding
-        paddingTop: Platform.OS === 'android' ? Math.max(insets.top, 20) : 10,
+        paddingTop: Platform.OS === 'ios' ? insets.top : Math.max(insets.top, 20),
         backgroundColor: theme.background,
     },
     leftContainer: {

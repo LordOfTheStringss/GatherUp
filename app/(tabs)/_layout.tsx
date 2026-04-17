@@ -396,14 +396,7 @@ export default function TabLayout() {
                                         </View>
                                     </View>
 
-                                    {/* Score bar */}
-                                    <View style={styles.suggestScoreRow}>
-                                        <Text style={styles.suggestScoreLabel}>Match</Text>
-                                        <View style={[styles.suggestScoreTrack, { backgroundColor: c.badge }]}>
-                                            <View style={[styles.suggestScoreFill, { width: `${score}%` as any, backgroundColor: c.accent }]} />
-                                        </View>
-                                        <Text style={[styles.suggestScoreValue, { color: c.accent }]}>{score}%</Text>
-                                    </View>
+
 
                                     {/* View button */}
                                     <TouchableOpacity
@@ -589,34 +582,7 @@ const styles = StyleSheet.create({
         color: '#AAA',
         fontWeight: '500',
     },
-    suggestScoreRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginBottom: 14,
-    },
-    suggestScoreLabel: {
-        fontSize: 11,
-        color: '#888',
-        fontWeight: '600',
-        width: 36,
-    },
-    suggestScoreTrack: {
-        flex: 1,
-        height: 5,
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    suggestScoreFill: {
-        height: '100%',
-        borderRadius: 3,
-    },
-    suggestScoreValue: {
-        fontSize: 12,
-        fontWeight: '700',
-        width: 36,
-        textAlign: 'right',
-    },
+
     suggestViewBtn: {
         flexDirection: 'row',
         alignItems: 'center',
