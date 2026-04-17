@@ -123,7 +123,7 @@ export class MatchingService {
      * Commit: 1. Check the 24h buffer. 2. Move participants B->A. 
      * 3. Set B.status=MERGED. 4. Notify.
      */
-    public async executeMerge(proposalId: string): Promise<void> {
+    public async executeMerge(proposalId: string, executingUserId: string): Promise<void> {
         const sClient = SupabaseClient.getInstance().client;
 
         // 1. Fetch proposal
@@ -139,7 +139,8 @@ export class MatchingService {
         const { NotificationService } = await import('../infra/NotificationService');
         const { EventManager } = await import('../core/event/EventManager');
 
-        const organizerId = proposal.accepted_by[0]; // First one to accept is organizer
+        // To pass Supabase RLS (organizer_id = auth.uid()), the executing user must be the organizer
+        const organizerId = executingUserId;
         const newEvent = await EventManager.getInstance().createEvent(organizerId, proposal.suggested_data);
 
         // 3. Migrate participants from BOTH events

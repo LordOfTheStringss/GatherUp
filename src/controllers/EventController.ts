@@ -376,7 +376,7 @@ export class EventController {
                 const { NotificationService } = await import('../infra/NotificationService');
                 
                 const matcher = new MatchingService(VectorService.getInstance(), NotificationService.getInstance());
-                await matcher.executeMerge(proposalId);
+                await matcher.executeMerge(proposalId, user.id);
                 
                 return { status: 200, message: "Merge executed successfully! Check your new event." };
             }
