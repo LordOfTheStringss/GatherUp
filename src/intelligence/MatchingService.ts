@@ -1,12 +1,16 @@
 import { Event } from '../core/event/Event';
 import { NotificationService } from '../infra/NotificationService';
-import { MergeInvalidException, PivotNotPossibleException } from './Exceptions';
+import { SupabaseClient } from '../infra/SupabaseClient';
+import { PivotNotPossibleException } from './Exceptions';
 import { VectorService } from './VectorService';
 
 export interface MergeProposal {
+    id: string;
     eventA: Event;
     eventB: Event;
-    score: number;
+    suggestedData: any;
+    accepted_by: string[];
+    status: 'PENDING' | 'EXECUTED' | 'REJECTED';
 }
 
 export enum ActivityType {
@@ -35,8 +39,55 @@ export class MatchingService {
      * 2. Pairwise compare (Similarity > specified value & Time overlap). 3. Check
      * Capacity. 4. Return Candidates.
      */
-    public scanForMerges(activeEvents: Event[]): MergeProposal[] {
-        return [];
+    public async scanForMerges(activeEvents: Event[]): Promise<void> {
+        // Logic to find pairs
+        // For each pair, call this.createMergeProposal
+    }
+
+    public async createMergeProposal(eventA: Event, eventB: Event): Promise<string> {
+        const suggestedData = {
+            title: `Merged: ${eventA.title} & ${eventB.title}`,
+            start_time: eventA.timeSlot.startTime.toISOString(),
+            end_time: eventA.timeSlot.endTime.toISOString(),
+            location_id: eventA.location.locationId,
+            location_name: eventA.location.name,
+            location_lat: eventA.location.coordinates.latitude,
+            location_lng: eventA.location.coordinates.longitude,
+            sub_category: eventA.subCategory,
+            max_capacity: Math.max(eventA.maxCapacity, eventB.maxCapacity) + 2
+        };
+
+        const { data, error } = await SupabaseClient.getInstance().client
+            .from('merge_proposals')
+            .insert({
+                event_a_id: eventA.eventId,
+                event_b_id: eventB.eventId,
+                suggested_data: suggestedData,
+                status: 'PENDING'
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Notify both organizers
+        await this.notificationService.sendPush(
+            eventA.organizerId,
+            "Event Merge Suggested",
+            `Would you like to merge your event with ${eventB.title}?`,
+            { proposalId: data.id, action: 'EVENT_MERGE_PROPOSAL' },
+            'event_merge'
+        );
+
+        await this.notificationService.sendPush(
+            eventB.organizerId,
+            "Event Merge Suggested",
+            `Would you like to merge your event with ${eventA.title}?`,
+            { proposalId: data.id, action: 'EVENT_MERGE_PROPOSAL' },
+            'event_merge'
+        );
+
+        return data.id;
     }
 
     /**
@@ -54,16 +105,53 @@ export class MatchingService {
      * Commit: 1. Check the 24h buffer. 2. Move participants B->A. 
      * 3. Set B.status=MERGED. 4. Notify.
      */
-    public executeMerge(eventA: Event, eventB: Event): Event {
-        // Verify buffer length
-        const timeDiff = eventA.timeSlot.startTime.getTime() - new Date().getTime();
-        const hoursBefore = timeDiff / (1000 * 60 * 60);
+    public async executeMerge(proposalId: string): Promise<void> {
+        const sClient = SupabaseClient.getInstance().client;
 
-        if (hoursBefore < this.minHoursBeforeMerge) {
-            throw new MergeInvalidException();
+        // 1. Fetch proposal
+        const { data: proposal, error: propErr } = await sClient
+            .from('merge_proposals')
+            .select('*, event_a_id, event_b_id')
+            .eq('id', proposalId)
+            .single();
+
+        if (propErr || !proposal) throw new Error("Merge proposal not found");
+
+        // 2. Create NEW merged event
+        const { NotificationService } = await import('../infra/NotificationService');
+        const { EventManager } = await import('../core/event/EventManager');
+
+        const organizerId = proposal.accepted_by[0]; // First one to accept is organizer
+        const newEvent = await EventManager.getInstance().createEvent(organizerId, proposal.suggested_data);
+
+        // 3. Migrate participants from BOTH events
+        const { data: participantsA } = await sClient.from('event_participants').select('user_id').eq('event_id', proposal.event_a_id);
+        const { data: participantsB } = await sClient.from('event_participants').select('user_id').eq('event_id', proposal.event_b_id);
+
+        const allUserIds = Array.from(new Set([
+            ...(participantsA || []).map((p: any) => p.user_id),
+            ...(participantsB || []).map((p: any) => p.user_id),
+            organizerId
+        ]));
+
+        for (const uid of allUserIds) {
+            if (uid === organizerId) continue; // Already added as organizer? Wait, createEvent might not add organizer to participants table
+            await EventManager.getInstance().joinEvent(newEvent.id, uid);
         }
 
-        // Proceed to move users and alter status
-        return eventA;
+        // 4. Cancel/Archive old events
+        await sClient.from('events').update({ status: 'CANCELLED' }).in('id', [proposal.event_a_id, proposal.event_b_id]);
+        await sClient.from('merge_proposals').update({ status: 'EXECUTED' }).eq('id', proposalId);
+
+        // 5. Notify everyone
+        for (const uid of allUserIds) {
+            await NotificationService.getInstance().sendPush(
+                uid,
+                "Events Merged!",
+                `Your event has been merged into: ${proposal.suggested_data.title}`,
+                { eventId: newEvent.id },
+                'general'
+            );
+        }
     }
 }

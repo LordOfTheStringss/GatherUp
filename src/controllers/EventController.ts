@@ -334,4 +334,58 @@ export class EventController {
             return { status: 500, message: e.message };
         }
     }
+
+    /**
+     * Accepts a merge proposal. If both organizers accept, triggers the execution.
+     */
+    public async acceptMerge(proposalId: string): Promise<ResponseEntity> {
+        try {
+            const user = await AuthManager.getInstance().getCurrentUser();
+            if (!user) throw new Error("Authentication required");
+
+            const sClient = SupabaseClient.getInstance().client;
+            
+            // 1. Fetch current proposal state
+            const { data: proposal, error: fetchErr } = await sClient
+                .from('merge_proposals')
+                .select('*')
+                .eq('id', proposalId)
+                .single();
+
+            if (fetchErr || !proposal) throw new Error("Proposal not found");
+            if (proposal.status !== 'PENDING') throw new Error("Proposal is no longer pending");
+
+            const acceptedBy = proposal.accepted_by || [];
+            if (acceptedBy.includes(user.id)) {
+                return { status: 200, message: "You already accepted this proposal" };
+            }
+
+            // 2. Update acceptance
+            const newAcceptedBy = [...acceptedBy, user.id];
+            const { error: updateErr } = await sClient
+                .from('merge_proposals')
+                .update({ accepted_by: newAcceptedBy })
+                .eq('id', proposalId);
+
+            if (updateErr) throw updateErr;
+
+            // 3. Check if we have two unique organizers (Assuming 2-party merge for now)
+            if (newAcceptedBy.length >= 2) {
+                const { MatchingService } = await import('../intelligence/MatchingService');
+                const { VectorService } = await import('../intelligence/VectorService');
+                const { NotificationService } = await import('../infra/NotificationService');
+                
+                const matcher = new MatchingService(VectorService.getInstance(), NotificationService.getInstance());
+                await matcher.executeMerge(proposalId);
+                
+                return { status: 200, message: "Merge executed successfully! Check your new event." };
+            }
+
+            return { status: 200, message: "Acceptance recorded. Waiting for the other organizer." };
+
+        } catch (error: any) {
+            console.error("acceptMerge error:", error);
+            return { status: 500, message: error.message || "Failed to accept merge" };
+        }
+    }
 }
