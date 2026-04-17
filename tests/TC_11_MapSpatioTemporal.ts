@@ -55,7 +55,8 @@ export class TC_11_MapSpatioTemporal extends BaseTestCase {
         .gte('location_lat', ANKARA_BOUNDS.minLat)
         .lte('location_lat', ANKARA_BOUNDS.maxLat)
         .gte('location_lng', ANKARA_BOUNDS.minLng)
-        .lte('location_lng', ANKARA_BOUNDS.maxLng);
+        .lte('location_lng', ANKARA_BOUNDS.maxLng)
+        .order('created_at', { ascending: false });
 
       const foundAll = testEvents.every(te => pins?.some((p: any) => p.id === te.id));
       results.push({

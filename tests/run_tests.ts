@@ -32,6 +32,8 @@ import { TC_22_DisasterRecovery } from './TC_22_DisasterRecovery';
 import { TC_23_DataDeletion } from './TC_23_DataDeletion';
 import { TC_24_TermsAcceptance } from './TC_24_TermsAcceptance';
 import { TC_25_TimeWindow } from './TC_25_TimeWindow';
+import { TC_26_UsabilitySurvey } from './TC_26_UsabilitySurvey';
+import { TC_27_AIRelevanceSurvey } from './TC_27_AIRelevanceSurvey';
 
 async function main() {
   console.log('╔══════════════════════════════════════════════════════════════╗');
@@ -67,6 +69,8 @@ async function main() {
   runner.register(new TC_23_DataDeletion());
   runner.register(new TC_24_TermsAcceptance());
   runner.register(new TC_25_TimeWindow());
+  runner.register(new TC_26_UsabilitySurvey());
+  runner.register(new TC_27_AIRelevanceSurvey());
 
   // Execute all tests
   const results = await runner.runAll();
