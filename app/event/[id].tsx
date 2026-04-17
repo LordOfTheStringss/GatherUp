@@ -460,7 +460,7 @@ export default function EventDetailScreen() {
                         </View>
 
                         {/* Title */}
-                        <Text style={styles.eventTitle}>{eventDetails.title}</Text>
+                        <Text style={styles.eventTitle}>{(eventDetails.title || '').replace(/^Etkinliği - /i, '')}</Text>
 
                         {/* Organizer */}
                         <View style={styles.organizerRow}>

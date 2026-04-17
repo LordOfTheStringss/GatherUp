@@ -2,10 +2,10 @@ import { Asset } from 'expo-asset';
 import { Platform } from 'react-native';
 import { Event, EventCategory, EventStatus, EventVisibility } from '../core/event/Event';
 import { User } from '../core/identity/User';
+import { ScheduleManager } from '../core/schedule/ScheduleManager';
 import { BlockType, DataSource, TimeSlot } from '../core/schedule/TimeSlot';
 import { SupabaseClient } from '../infra/SupabaseClient';
 import { Location, LocationType } from '../spatial/Location';
-import { ScheduleManager } from '../core/schedule/ScheduleManager';
 import { VectorService } from './VectorService';
 
 export interface PlanProposal {
@@ -218,8 +218,10 @@ export class RecommendationEngine {
     public async getGroupSuggestion(users: User[]): Promise<{ features: Float32Array; proposal: PlanProposal }> {
         const numUsers = users.length;
         // BUG FIX: Filter out invalid/undefined userIds to prevent Supabase UUID errors
-        const userIds = users.map(u => u.userId).filter(id => id && id !== 'undefined');
-        
+        // create.tsx'den gelen objeler Supabase'den direk geldiği için 'userId' yerine 'id' alanına sahipler.
+        const userIds = users.map((u: any) => u.userId || u.id).filter(id => id && id !== 'undefined');
+        console.log("Extracted IDs:", userIds);
+
         if (userIds.length === 0) {
             console.warn('getGroupSuggestion: No valid user IDs found.');
             return { features: new Float32Array(58), proposal: {} };
@@ -239,7 +241,7 @@ export class RecommendationEngine {
                     const end = new Date(slot.endTime);
                     let day = start.getDay() - 1; // 0=Mon
                     if (day < 0) day = 6;
-                    
+
                     const startHour = start.getHours();
                     const endHour = end.getHours() || 24; // Handle midnight
 
@@ -357,10 +359,10 @@ export class RecommendationEngine {
             for (let d = 0; d < 7; d++) {
                 for (let h = 0; h < 24; h++) {
                     const idx = d * 24 + h;
-                    
+
                     // 1. Raw match score
                     let score = dayProbs[d] * hourProbs[h];
-                    
+
                     // 2. Schedule Mask (Everyone Free = 1, Anyone Busy = 0)
                     score *= scheduleMask[idx];
 
@@ -394,13 +396,33 @@ export class RecommendationEngine {
             const resDay = Math.floor(bestIdx / 24);
             const resHour = bestIdx % 24;
 
-            // ── Top-3 Category Logic ─────────────────────────────────────────
-            const catWithIdx = Array.from(catLogits).map((v, i) => ({ v, i }));
-            catWithIdx.sort((a, b) => b.v - a.v);
-            const top3CatNames = catWithIdx.slice(0, 3).map(x => MASTER_52_SORTED[x.i]);
-            
-            const predictedSubCat = top3CatNames[0];
-            const predictedCat = CLUSTER_MAP[predictedSubCat] || 'Social_Career';
+            // ── Best Category Logic ────────────────────────────────────────
+            let bestCatIdx = 0;
+            let bestCatVal = -Infinity;
+            for (let i = 0; i < catLogits.length; i++) {
+                if (catLogits[i] > bestCatVal) {
+                    bestCatVal = catLogits[i];
+                    bestCatIdx = i;
+                }
+            }
+            const rawCat = MASTER_52_SORTED[bestCatIdx];
+
+            const AI_TO_UI_MAP: Record<string, string> = {
+                'Artificial Intelligence': 'AI',
+                'Cybersecurity': 'Cyber Security',
+                'Game Development': 'Game Dev',
+                'Concert': 'Concerts',
+                'Exhibition': 'Exhibitions',
+                'Food': 'Cooking',
+                'Travel': 'Traveling',
+                'Foreign Languages': 'Languages',
+                'Musical Instruments': 'Guitar',
+                'Career Days': 'Career Fairs',
+                'Workshop': 'Workshops'
+            };
+
+            const predictedSubCat = AI_TO_UI_MAP[rawCat] || rawCat;
+            const predictedCat = CLUSTER_MAP[rawCat] || 'Social_Career';
 
             // Resolve target date
             const targetTime = new Date(now);
@@ -410,20 +432,19 @@ export class RecommendationEngine {
             targetTime.setHours(resHour, 0, 0, 0);
 
             console.log(`🚀 GROUP GEN → ${predictedSubCat} on ${targetTime.toDateString()} at ${resHour}:00`);
-            console.log(`✨ TOP-3 Suggestions: ${top3CatNames.join(' | ')}`);
 
             finalProposal = {
                 suggestedTime: targetTime,
                 suggestedCategory: predictedCat,
                 suggestedSubCategory: predictedSubCat,
                 suggestedTitle: predictedSubCat,
-                suggestedTags: top3CatNames.slice(1).join(', '),
+                suggestedTags: '', // Sadece 1 tür seçiliyor, ekstra taglere gerek kalmadı
             };
 
             // ── Phase 3: Post-Inference Real Event Matching ───────────────────
             console.log('🔍 Searching for matching real events...');
             const supabase = SupabaseClient.getInstance().client;
-            
+
             // Search range: ±12 hours around suggested time
             const timeLower = new Date(targetTime.getTime() - 12 * 60 * 60 * 1000).toISOString();
             const timeUpper = new Date(targetTime.getTime() + 12 * 60 * 60 * 1000).toISOString();
@@ -518,7 +539,7 @@ export class RecommendationEngine {
 
             // 7. Vector search via Supabase RPC
             console.log('6. Querying match_events RPC...');
-            
+
             const { data: topEvents, error: matchError } = await supabase.rpc('match_events', {
                 query_embedding: userVector, // Passing array directly for better type handling
                 match_threshold: 0.05,
@@ -649,7 +670,7 @@ export class RecommendationEngine {
         const event = new Event(
             row.id,
             row.organizer_id,
-            row.title,
+            (row.title || '').replace(/^Etkinliği - /i, ''),
             (row.category as EventCategory) || EventCategory.SOCIAL,
             row.sub_category || '',
             location,

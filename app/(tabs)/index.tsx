@@ -137,7 +137,7 @@ export default function HomeScreen() {
 
             return {
               id: e.id,
-              title: e.title,
+              title: (e.title || '').replace(/^Etkinliği - /i, ''),
               category: e.sub_category,
               time: e.start_time
                 ? new Date(e.start_time).toLocaleString("en-US", {

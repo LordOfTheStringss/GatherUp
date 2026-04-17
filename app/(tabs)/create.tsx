@@ -402,6 +402,7 @@ export default function CreateEventScreen() {
 
             if (suggestionResult && suggestionResult.proposal) {
                 const prop = suggestionResult.proposal;
+                console.log(prop);
                 const catName = prop.suggestedSubCategory || prop.suggestedCategory || 'Social';
                 const sDate = prop.suggestedTime || new Date();
 
