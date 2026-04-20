@@ -71,12 +71,15 @@ export class EventManager {
 
         VectorService.getInstance().generateEventEmbedding(data.id, {
             title: eventData.title,
-            time: startTime,
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
             durationHours: durationHours,
-            locationName: eventData.location_name,
-            locationType: eventData.location_type,
+            location_lat: eventData.location_lat,
+            location_lng: eventData.location_lng,
+            location_name: eventData.location_name,
+            location_type: eventData.location_type,
             category: eventData.category,
-            subCategory: eventData.sub_category,
+            sub_category: eventData.sub_category,
             minCapacity: eventData.min_capacity,
             maxCapacity: eventData.max_capacity,
             description: eventData.description

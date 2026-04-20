@@ -2,10 +2,10 @@ import { ConflictEngine } from '../core/event/ConflictEngine';
 import { Event } from '../core/event/Event';
 import { EventManager } from '../core/event/EventManager';
 import { AuthManager } from '../core/identity/AuthManager';
+import { ScheduleManager } from '../core/schedule/ScheduleManager';
+import { SupabaseClient } from '../infra/SupabaseClient';
 import { GeoPoint } from '../spatial/Location';
 import { ResponseEntity } from './ResponseEntity';
-import { SupabaseClient } from '../infra/SupabaseClient';
-import { ScheduleManager } from '../core/schedule/ScheduleManager';
 
 export interface CreateEventDTO {
     title: string;
@@ -83,8 +83,8 @@ export class EventController {
 
                 const conflict = await this.checkScheduleConflict(user.id, eventDate, endTime);
                 if (conflict) {
-                    return { 
-                        status: 409, 
+                    return {
+                        status: 409,
                         message: `Schedule Conflict: You already have "${conflict}" scheduled during this time. Create anyway?`,
                         data: { conflictingEvent: conflict }
                     };
@@ -111,12 +111,12 @@ export class EventController {
 
     private async checkScheduleConflict(userId: string, start: Date, end: Date, ignoreEventId?: string): Promise<string | null> {
         const sClient = SupabaseClient.getInstance().client;
-        
+
         // 1. Check other events (Hosted or Joined)
         const { data: userJoinedEvents } = await sClient.from('event_participants').select('event_id').eq('user_id', userId);
         const joinedEventIds = userJoinedEvents?.map((e: any) => e.event_id) || [];
         const orCondition = `organizer_id.eq.${userId}` + (joinedEventIds.length > 0 ? `,id.in.(${joinedEventIds.join(',')})` : '');
-        
+
         const { data: userEvents } = await sClient.from('events').select('id, start_time, end_time, title').or(orCondition);
         if (userEvents) {
             for (const e of userEvents) {
@@ -131,7 +131,7 @@ export class EventController {
         const { data: scheduleBlocks } = await sClient.from('schedule').select('*').eq('user_id', userId).eq('is_busy', true);
         if (scheduleBlocks) {
             const dayOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][start.getDay()];
-            
+
             for (const block of scheduleBlocks) {
                 let blockDateForCompare = new Date(start);
 
@@ -149,13 +149,13 @@ export class EventController {
                 // Check time overlap securely by mapping to the actual event day
                 const [bSH, bSM] = block.start_time.split(':').map(Number);
                 const [bEH, bEM] = block.end_time.split(':').map(Number);
-                
+
                 const blockStartDate = new Date(blockDateForCompare);
                 blockStartDate.setHours(bSH, bSM, 0, 0);
-                
+
                 const blockEndDate = new Date(blockDateForCompare);
                 blockEndDate.setHours(bEH, bEM, 0, 0);
-                
+
                 // If it crosses midnight, end time is on the next day
                 if (blockEndDate < blockStartDate) {
                     blockEndDate.setDate(blockEndDate.getDate() + 1);
@@ -199,7 +199,7 @@ export class EventController {
             if (!user) throw new Error("Authentication required");
 
             const sClient = SupabaseClient.getInstance().client;
-            
+
             // 1. Fetch target event time
             const { data: targetEvent } = await sClient.from('events').select('start_time, end_time, title').eq('id', eventId).single();
             if (!targetEvent || !targetEvent.start_time || !targetEvent.end_time) {
@@ -214,8 +214,8 @@ export class EventController {
             if (!forceJoin) {
                 const conflict = await this.checkScheduleConflict(user.id, eventDate, endTime, eventId);
                 if (conflict) {
-                    return { 
-                        status: 409, 
+                    return {
+                        status: 409,
                         message: `Schedule Conflict: You already have "${conflict}" scheduled during this time. Join anyway?`,
                         data: { conflictingEvent: conflict }
                     };
@@ -223,7 +223,7 @@ export class EventController {
             }
 
             await this.eventManager.joinEvent(eventId, user.id);
-            
+
             // Sync to explicit schedule block
             const scheduleManager = new ScheduleManager();
             await scheduleManager.syncEventToSchedule(
@@ -247,7 +247,7 @@ export class EventController {
         try {
             const user = await AuthManager.getInstance().getCurrentUser();
             if (!user) throw new Error("Authentication required");
-            
+
             // Technically we should remove participation through EventManager
             // For now, at minimum, we sync the schedule block removal
             const sClient = SupabaseClient.getInstance().client;
@@ -259,7 +259,7 @@ export class EventController {
 
             // Remove from event_participants table
             await sClient.from('event_participants').delete().eq('event_id', eventId).eq('user_id', user.id);
-            
+
             // Trigger user embedding update (history changed)
             const { VectorService } = await import('../intelligence/VectorService');
             VectorService.getInstance().generateUserEmbedding(user.id)
@@ -267,7 +267,7 @@ export class EventController {
 
             return { status: 200, message: "Left Event" };
         } catch (e: any) {
-             return { status: 500, message: e.message || "Failed to leave event" };
+            return { status: 500, message: e.message || "Failed to leave event" };
         }
     }
 
@@ -290,15 +290,39 @@ export class EventController {
         }
     }
 
-    /**
-     * Calls recommendationEngine.getGroupSuggestion().
-     */
     public async getGroupAIPlan(friendsIds: string[]): Promise<ResponseEntity<any>> {
         try {
-            // Mocking User objects for the stub
-            const plan = this.recommendationEngine.getGroupSuggestion([]);
+            const currentUser = await AuthManager.getInstance().getCurrentUser();
+            if (!currentUser) throw new Error("Authentication required");
+
+            const sClient = SupabaseClient.getInstance().client;
+            
+            // 1. Fetch all users including current user and friends
+            const allIds = [currentUser.id, ...friendsIds.filter(id => id && id !== 'undefined')];
+            const { data: usersData, error: fetchErr } = await sClient
+                .from('users')
+                .select('*')
+                .in('id', allIds);
+
+            if (fetchErr || !usersData) throw new Error("Failed to fetch user profiles for group planning");
+
+            // 2. Format users as expected by recommendationEngine (matching create.tsx logic)
+            const formattedUsers = usersData.map((u: any) => ({
+                ...u,
+                profileVector: typeof u.profile_vector === 'string' ? JSON.parse(u.profile_vector) : u.profile_vector,
+                interestTags: u.interest_tags || [],
+                locationBased: {
+                    coordinates: {
+                        latitude: u.location_lat ?? 39.900,
+                        longitude: u.location_lng ?? 32.815
+                    }
+                }
+            }));
+
+            const plan = await this.recommendationEngine.getGroupSuggestion(formattedUsers);
             return { status: 200, data: plan };
         } catch (error: any) {
+            console.error("getGroupAIPlan error:", error);
             return { status: 500, message: error.message || "AI Planning failed" };
         }
     }
@@ -344,7 +368,7 @@ export class EventController {
             if (!user) throw new Error("Authentication required");
 
             const sClient = SupabaseClient.getInstance().client;
-            
+
             // 1. Fetch current proposal state
             const { data: proposal, error: fetchErr } = await sClient
                 .from('merge_proposals')
@@ -374,10 +398,10 @@ export class EventController {
                 const { MatchingService } = await import('../intelligence/MatchingService');
                 const { VectorService } = await import('../intelligence/VectorService');
                 const { NotificationService } = await import('../infra/NotificationService');
-                
+
                 const matcher = new MatchingService(VectorService.getInstance(), NotificationService.getInstance());
                 await matcher.executeMerge(proposalId, user.id);
-                
+
                 return { status: 200, message: "Merge executed successfully! Check your new event." };
             }
 

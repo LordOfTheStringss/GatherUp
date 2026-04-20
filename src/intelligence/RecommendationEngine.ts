@@ -14,6 +14,7 @@ export interface PlanProposal {
     matchingEvents?: Event[];
     suggestedCategory?: string;
     suggestedSubCategory?: string;
+    suggestedSubCategoryUI?: string;
     suggestedTitle?: string;
     suggestedTags?: string;
 }
@@ -63,6 +64,20 @@ const CLUSTER_MAP: Record<string, string> = {
     'Musical Instruments': 'Hobbies_Lifestyle',
     Volunteering: 'Social_Career', Networking: 'Social_Career',
     'Career Days': 'Social_Career', Workshop: 'Social_Career',
+};
+
+const UI_TO_AI_MAP: Record<string, string> = {
+    'AI': 'Artificial Intelligence',
+    'Cyber Security': 'Cybersecurity',
+    'Game Dev': 'Game Development',
+    'Concerts': 'Concert',
+    'Exhibitions': 'Exhibition',
+    'Cooking': 'Food',
+    'Traveling': 'Travel',
+    'Languages': 'Foreign Languages',
+    'Guitar': 'Musical Instruments',
+    'Career Fairs': 'Career Days',
+    'Workshops': 'Workshop'
 };
 
 /**
@@ -139,7 +154,8 @@ function deriveArchetype(interestTags: string[]): string {
 function buildInterestsBinary(interestTags: string[]): Float32Array {
     const vec = new Float32Array(MASTER_52_SORTED.length);
     for (const tag of interestTags) {
-        const idx = SUBCAT_TO_IDX[tag];
+        const canonical = UI_TO_AI_MAP[tag] || tag;
+        const idx = SUBCAT_TO_IDX[canonical];
         if (idx !== undefined) vec[idx] = 1.0;
     }
     return vec;
@@ -436,7 +452,8 @@ export class RecommendationEngine {
             finalProposal = {
                 suggestedTime: targetTime,
                 suggestedCategory: predictedCat,
-                suggestedSubCategory: predictedSubCat,
+                suggestedSubCategory: rawCat, // Canonical name for DB
+                suggestedSubCategoryUI: predictedSubCat, // For display
                 suggestedTitle: predictedSubCat,
                 suggestedTags: '', // Sadece 1 tür seçiliyor, ekstra taglere gerek kalmadı
             };
