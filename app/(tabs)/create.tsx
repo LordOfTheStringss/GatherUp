@@ -1,26 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { PremiumWheelPicker } from '../../src/components/ui/PremiumWheelPicker';
 import * as Location from 'expo-location';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { OnboardingTooltip } from '../../src/components/OnboardingTooltip';
+import { PremiumWheelPicker } from '../../src/components/ui/PremiumWheelPicker';
 import { EventController } from '../../src/controllers/EventController';
 import { ConflictEngine } from '../../src/core/event/ConflictEngine';
 import { EventManager } from '../../src/core/event/EventManager';
 import { AuthManager } from '../../src/core/identity/AuthManager';
+import { INTEREST_TAGS } from '../../src/data/interestTags';
+import { isWithinAnkara, searchLocations } from '../../src/data/locations';
 import { NotificationService } from '../../src/infra/NotificationService';
 import { SupabaseClient } from '../../src/infra/SupabaseClient';
 import { RecommendationEngine } from '../../src/intelligence/RecommendationEngine';
-import { INTEREST_TAGS, InterestTag } from '../../src/data/interestTags';
-import { useAuthStore } from '../../src/store/authStore';
 import { useUIStore } from '../../src/store/uiStore';
 import { ThemeColors } from '../../src/theme/colors';
 import { useTheme } from '../../src/theme/useTheme';
-import { ANKARA_NEIGHBORHOODS, searchLocations, isWithinAnkara } from '../../src/data/locations';
 
 // DI Setup
 const recommendationEngine = RecommendationEngine.getInstance();
@@ -125,13 +124,13 @@ export default function CreateEventScreen() {
     const [isPrivate, setIsPrivate] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState<{ latitude: number, longitude: number } | null>(null);
     const [locationSearchQuery, setLocationSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState<{id: string; name: string; latitude: number; longitude: number; source: 'local' | 'remote'}[]>([]);
+    const [searchResults, setSearchResults] = useState<{ id: string; name: string; latitude: number; longitude: number; source: 'local' | 'remote' }[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
     const handleSearchLocation = async () => {
         if (!locationSearchQuery.trim()) return;
         setIsSearching(true);
-        
+
         try {
             // 1. Local matches (already showing via onChangeText, but ensure they're set)
             const localMatches = searchLocations(locationSearchQuery).map(n => ({
@@ -152,7 +151,7 @@ export default function CreateEventScreen() {
                 if (locRes && locRes.length > 0) {
                     // Filter: ONLY results within Ankara geographic bounds
                     const ankaraResults = locRes.filter(r => isWithinAnkara(r.latitude, r.longitude));
-                    
+
                     if (ankaraResults.length > 0) {
                         const resultsWithAddresses = await Promise.all(
                             ankaraResults.slice(0, 3).map(async (res) => {
@@ -172,7 +171,7 @@ export default function CreateEventScreen() {
                         );
 
                         // Combine: local first, then remote (no duplicates)
-                        const combined: {id: string; name: string; latitude: number; longitude: number; source: 'local' | 'remote'}[] = [...localMatches];
+                        const combined: { id: string; name: string; latitude: number; longitude: number; source: 'local' | 'remote' }[] = [...localMatches];
                         resultsWithAddresses.forEach(remote => {
                             const isDuplicate = combined.some(l =>
                                 Math.abs(l.latitude - remote.latitude) < 0.002 &&
@@ -403,18 +402,19 @@ export default function CreateEventScreen() {
             if (suggestionResult && suggestionResult.proposal) {
                 const prop = suggestionResult.proposal;
                 console.log(prop);
-                const catName = prop.suggestedSubCategory || prop.suggestedCategory || 'Social';
+                const displayCat = prop.suggestedSubCategoryUI || prop.suggestedSubCategory || prop.suggestedCategory || 'Social';
+                const canonicalCat = prop.suggestedSubCategory || prop.suggestedCategory || 'Social';
                 const sDate = prop.suggestedTime || new Date();
 
                 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                 const dayStr = days[sDate.getDay()];
                 const hourStr = sDate.getHours().toString().padStart(2, '0');
 
-                showToast(`AI chose ${dayStr} ${hourStr}:00 for ${catName}!`, 'success');
+                showToast(`AI chose ${dayStr} ${hourStr}:00 for ${displayCat}!`, 'success');
 
                 // Verilerin otomatik olarak manuel event kısmına geçirilmesi (Autofill)
-                setTitle(`${catName} Session`);
-                setCategory(catName);
+                setTitle(`${displayCat} Session`);
+                setCategory(canonicalCat);
                 setDate(sDate);
                 setIsPrivate(true);
 
@@ -444,7 +444,9 @@ export default function CreateEventScreen() {
                         style={[styles.input, { justifyContent: 'center' }]}
                         onPress={() => setShowCategoryPicker(true)}
                     >
-                        <Text style={{ color: category ? theme.textPrimary : theme.textSecondary }}>{category || 'Select'}</Text>
+                        <Text style={{ color: category ? theme.textPrimary : theme.textSecondary }}>
+                            {INTEREST_TAGS.find(t => t.title === category)?.title || category || 'Select'}
+                        </Text>
                         <Ionicons name="chevron-down" size={16} color={theme.textSecondary} style={{ position: 'absolute', right: 16 }} />
                     </TouchableOpacity>
                 </View>
@@ -632,7 +634,7 @@ export default function CreateEventScreen() {
                 <View style={styles.floatingSearchContainer}>
                     <View style={styles.searchBarWrapper}>
                         <Ionicons name="location" size={20} color={theme.primary} style={{ marginLeft: 12 }} />
-                        <TextInput 
+                        <TextInput
                             style={styles.floatingSearchInput}
                             placeholder="Find a location..."
                             placeholderTextColor={theme.textSecondary}
@@ -672,10 +674,10 @@ export default function CreateEventScreen() {
                                     }}
                                 >
                                     <View style={styles.resultIconContainer}>
-                                        <Ionicons 
-                                            name={item.source === 'local' ? "location" : "navigate"} 
-                                            size={18} 
-                                            color={item.source === 'local' ? theme.primary : theme.textSecondary} 
+                                        <Ionicons
+                                            name={item.source === 'local' ? "location" : "navigate"}
+                                            size={18}
+                                            color={item.source === 'local' ? theme.primary : theme.textSecondary}
                                         />
                                     </View>
                                     <View style={{ flex: 1 }}>
@@ -1064,10 +1066,10 @@ const createStyles = (theme: ThemeColors) => StyleSheet.create({
         alignItems: 'center',
         borderWidth: 1,
         borderColor: theme.cardBorder,
-        shadowColor: '#000', 
-        shadowOffset: { width: 0, height: 2 }, 
-        shadowOpacity: 0.5, 
-        shadowRadius: 5, 
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.5,
+        shadowRadius: 5,
         elevation: 6,
     },
 });

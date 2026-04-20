@@ -1,6 +1,5 @@
 import { Asset } from 'expo-asset';
 import { SupabaseClient } from '../infra/SupabaseClient';
-import { VectorGenerationException } from './Exceptions';
 
 const SUBCAT_TO_IDX_JSON = require('../../assets/models/subcat_to_idx.json');
 const CAT_ENCODER_JSON = require('../../assets/models/cat_encoder.json');
@@ -84,6 +83,20 @@ export class VectorService {
         "Networking": { "tags": "Sosyal, Kariyer, İletişim, İş, Tanışma", "cat": "Sosyal" },
         "Kariyer Günleri": { "tags": "Sosyal, Kariyer, İş, Gelecek, Profesyonel", "cat": "Sosyal" },
         "Workshop": { "tags": "Sosyal, Eğitim, Atölye, Üretim, Öğrenme", "cat": "Sosyal" }
+    };
+
+    private uiToAiMap: Record<string, string> = {
+        'AI': 'Artificial Intelligence',
+        'Cyber Security': 'Cybersecurity',
+        'Game Dev': 'Game Development',
+        'Concerts': 'Concert',
+        'Exhibitions': 'Exhibition',
+        'Cooking': 'Food',
+        'Traveling': 'Travel',
+        'Languages': 'Foreign Languages',
+        'Guitar': 'Musical Instruments',
+        'Career Fairs': 'Career Days',
+        'Workshops': 'Workshop'
     };
 
     private constructor() { }
@@ -211,7 +224,7 @@ export class VectorService {
             context[6] = (userLat - latMean) / latStd;
 
             const count = new Float32Array([Math.log1p(histLen)]);
-            
+
             // Calculate L2 norm of history sequence
             let sumSq = 0;
             histSeq.forEach(v => sumSq += v * v);
@@ -249,7 +262,7 @@ export class VectorService {
 
             const { error } = await SupabaseClient.getInstance().client
                 .from('users')
-                .update({ 
+                .update({
                     profile_vector: vector
                 })
                 .eq('id', userId);
@@ -285,21 +298,30 @@ export class VectorService {
             const numericFeats = this.calculateEventNumericFeatures(record);
 
             // 3. Subcategory Index
-            const subCategory = record.sub_category || record.subCategory || "";
-            const subcatIdx = SUBCAT_TO_IDX[subCategory] || 0;
+            let subCategory = record.sub_category || record.subCategory || "";
+            if (this.uiToAiMap[subCategory]) {
+                console.log(`[VectorService] Mapping "${subCategory}" -> "${this.uiToAiMap[subCategory]}"`);
+                subCategory = this.uiToAiMap[subCategory];
+            }
+            const subcatIdx = SUBCAT_TO_IDX[subCategory] ?? 0;
 
             // 4. Run ONNX Session
-            const modelAsset = Asset.fromModule(require('../../assets/models/event_tower.onnx'));
-            await modelAsset.downloadAsync();
-            const session = await ONNX.InferenceSession.create(modelAsset.localUri || modelAsset.uri);
+            const assets = await Asset.loadAsync(require('../../assets/models/event_tower.onnx'));
+            const modelUri = assets[0].localUri || assets[0].uri;
+            if (!modelUri) throw new Error('Event model URI not found');
 
+            const session = await ONNX.InferenceSession.create(modelUri);
+            console.log(`[VectorService] Event Tower Input Names:`, session.inputNames);
             const results = await session.run({
                 subcat_idx: new TensorClass('int64', BigInt64Array.from([BigInt(subcatIdx)]), [1]),
-                numeric_feats: new TensorClass('float32', numericFeats, [1, 7]),
+                numeric_input: new TensorClass('float32', numericFeats, [1, 7]),
             });
 
-            // Correct output key check
+            console.log(`[VectorService] ONNX Result Keys:`, Object.keys(results));
             const eventVectorTensor = results.output || results.vector || Object.values(results)[0];
+            if (!eventVectorTensor || !eventVectorTensor.data) {
+                throw new Error(`Model output not found. Keys: ${Object.keys(results)}`);
+            }
             const vector = Array.from(eventVectorTensor.data as Float32Array);
 
             // 5. Update DB (column: embedding)
@@ -319,11 +341,11 @@ export class VectorService {
 
     private calculateEventNumericFeatures(row: any): Float32Array {
         const feats = new Float32Array(7);
-        
+
         // Coords: Handle snake_case (DB) and camelCase (DTO)
         const lat = row.location_lat ?? row.latitude ?? row.locationLat ?? 39.900;
         const lon = row.location_lng ?? row.longitude ?? row.locationLng ?? 32.815;
-        
+
         feats[0] = (lat - EVENT_COORD_SCALER.mean[0]) / EVENT_COORD_SCALER.scale[0];
         feats[1] = (lon - EVENT_COORD_SCALER.mean[1]) / EVENT_COORD_SCALER.scale[1];
 
@@ -336,7 +358,7 @@ export class VectorService {
             const endTime = new Date(row.end_time);
             durMins = (endTime.getTime() - startTime.getTime()) / 60000;
         } else if (row.time) { // CreateEventDTO fallback
-            durMins = 60; 
+            durMins = 60;
         }
 
         feats[2] = (durMins - EVENT_DUR_SCALER.mean[0]) / EVENT_DUR_SCALER.scale[0];
