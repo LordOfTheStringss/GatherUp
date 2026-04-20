@@ -71,8 +71,20 @@ export class AuthManager {
             throw new Error(error.message);
         }
 
-            VectorService.getInstance().generateUserEmbedding(authData.user.id)
-                .catch((e: any) => console.error("Initial embedding generation failed:", e));
+        // Explicitly update base_location in the users table to handle any trigger mapping issues
+        if (authData.user?.id && data.baseLocation) {
+            const { error: dbError } = await this.supabaseClient.client
+                .from('users')
+                .update({ base_location: data.baseLocation })
+                .eq('id', authData.user.id);
+            
+            if (dbError) {
+                console.error("Failed to explicitly set base_location:", dbError);
+            }
+        }
+
+        VectorService.getInstance().generateUserEmbedding(authData.user.id)
+            .catch((e: any) => console.error("Initial embedding generation failed:", e));
 
         return { success: true, userId: authData.user?.id };
     }
