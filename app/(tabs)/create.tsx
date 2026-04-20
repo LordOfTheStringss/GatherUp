@@ -54,7 +54,13 @@ export default function CreateEventScreen() {
                     const { data: dbUser } = await supabase.from('users').select('*').eq('id', sessionUser.id).single();
 
                     if (dbUser) {
-                        setCurrentUser(dbUser);
+                        const mappedUser = {
+                            ...dbUser,
+                            fullName: dbUser.full_name,
+                            interestTags: dbUser.interest_tags || [],
+                            profileVector: typeof dbUser.profile_vector === 'string' ? JSON.parse(dbUser.profile_vector) : dbUser.profile_vector
+                        };
+                        setCurrentUser(mappedUser);
 
                         // Fetch the real friends of the user via the 'friendships' table (mutual follows)
                         const { data: whoIFollow } = await supabase.from('friendships').select('friend_id').eq('user_id', sessionUser.id);
@@ -69,6 +75,8 @@ export default function CreateEventScreen() {
                                 if (friendsData) {
                                     const parsedFriends = friendsData.map((f: any) => ({
                                         ...f,
+                                        fullName: f.full_name,
+                                        interestTags: f.interest_tags || [],
                                         profileVector: typeof f.profile_vector === 'string' ? JSON.parse(f.profile_vector) : f.profile_vector
                                     }));
                                     setMyFriends(parsedFriends);
@@ -385,10 +393,7 @@ export default function CreateEventScreen() {
                 return;
             }
 
-            // O anki userın kendisi (vector parse edilmiş hali) ve seçtiği arkadaşları
-            const myVector = typeof currentUser.profile_vector === 'string' ? JSON.parse(currentUser.profile_vector) : currentUser.profile_vector;
-            const currentUserWithVec = { ...currentUser, profileVector: myVector };
-
+            const currentUserWithVec = { ...currentUser }; // Already mapped in useEffect
             const allPlanUsers = [currentUserWithVec, ...selectedFriends];
 
             // RecommendationEngine üzerinden getGroupSuggestion'ı doğrudan çağırıyoruz

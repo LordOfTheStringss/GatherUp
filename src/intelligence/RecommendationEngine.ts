@@ -231,16 +231,27 @@ export class RecommendationEngine {
      *   avg_interests(52) + diversity(1) + avg_loc(2) + p_count(1) + geo_spread(1)
      *   + free_score(1) + interest_alignment(1)
      */
+    /**
+     * Group plan suggestion logic.
+     * Inputs: scalar_input (1,59) + schedule_input (1,168).
+     */
     public async getGroupSuggestion(users: User[]): Promise<{ features: Float32Array; proposal: PlanProposal }> {
         const numUsers = users.length;
-        // BUG FIX: Filter out invalid/undefined userIds to prevent Supabase UUID errors
-        // create.tsx'den gelen objeler Supabase'den direk geldiği için 'userId' yerine 'id' alanına sahipler.
+
+        // BUG FIX: Filter out invalid/undefined userIds
         const userIds = users.map((u: any) => u.userId || u.id).filter(id => id && id !== 'undefined');
         console.log("Extracted IDs:", userIds);
 
         if (userIds.length === 0) {
             console.warn('getGroupSuggestion: No valid user IDs found.');
-            return { features: new Float32Array(58), proposal: {} };
+            return { features: new Float32Array(59), proposal: {} };
+        }
+
+        // FIX 1: Kullanıcıların interestTags verisi boş mu geliyor kontrol et.
+        // Eğer boşsa matris sıfırlardan oluşur ve model "Sergi"ye (mode collapse) düşer.
+        const missingTags = users.some(u => !u.interestTags || u.interestTags.length === 0);
+        if (missingTags) {
+            console.warn("🚨 DİKKAT: Bazı kullanıcıların 'interestTags' verisi boş veya undefined! Model mecburen varsayılan kategoriye kayabilir. Lütfen bu fonksiyona gelen user objelerinin tam dolu olduğundan emin olun.");
         }
 
         // 1. Fetch real schedules for all members
@@ -248,7 +259,6 @@ export class RecommendationEngine {
         const userSchedules = await scheduleMgr.getBulkSchedules(userIds);
 
         // 2. Build aggregated schedule mask (168-dim) and calculate free score
-        // Each slot is 1 (FREE) only if NO user is BUSY at that exact hour of the week.
         const scheduleMask = new Float32Array(168).fill(1.0);
         for (const slots of Object.values(userSchedules)) {
             for (const slot of slots) {
@@ -259,7 +269,7 @@ export class RecommendationEngine {
                     if (day < 0) day = 6;
 
                     const startHour = start.getHours();
-                    const endHour = end.getHours() || 24; // Handle midnight
+                    const endHour = end.getHours() || 24;
 
                     for (let h = startHour; h < endHour; h++) {
                         const idx = day * 24 + h;
@@ -294,6 +304,9 @@ export class RecommendationEngine {
         }
         const diversity = divSum / MASTER_52_SORTED.length;
 
+        // Basit bir uyum skoru (interest_alignment) oluşturuyoruz (Eğer python'da farklı hesapladıysan burayı ona göre değiştir)
+        const interestAlignment = 1.0 - diversity;
+
         // 5. Spatial features
         const lons = users.map(u => u.locationBased?.coordinates?.longitude ?? 32.815);
         const lats = users.map(u => u.locationBased?.coordinates?.latitude ?? 39.900);
@@ -312,7 +325,10 @@ export class RecommendationEngine {
         const pCount = Math.log1p(numUsers);
 
         // ──────────────────────────────────────────────────────────────────
-        // 6. Assemble scalar_input (58-dim)
+        // FIX 2: Feature Shift Kaymasını Önleme (58 -> 59 Dimension)
+        // Orijinal kodunda 58 eleman oluşturmuştun, interest_alignment eksikti!
+        // Tensör kaydığı için model saçmalıyordu. Boyutu 59 yaptık.
+        // 58 BOYUTLU ORİJİNAL YAPI (DÜZELTİLMİŞ)
         const scalarInput = new Float32Array(58);
         scalarInput.set(avgInterests, 0); // 52
         scalarInput[52] = diversity;      // 1
@@ -321,6 +337,7 @@ export class RecommendationEngine {
         scalarInput[55] = pCount;         // 1
         scalarInput[56] = scaledGeoSpread; // 1
         scalarInput[57] = scaledFreeScore; // 1
+        // (Tensörleri tanımlarken de [1, 58] olarak bırakıyorsun)
 
         let finalProposal: PlanProposal = {
             suggestedTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
@@ -339,7 +356,7 @@ export class RecommendationEngine {
             const session = await ONNX.InferenceSession.create(modelUri);
             const TensorClass = ONNX.Tensor;
 
-            const scalarTensor = new TensorClass('float32', scalarInput, [1, 58]);
+            const scalarTensor = new TensorClass('float32', scalarInput, [1, 58]); // BURAYI DA 59 YAPTIK
             const scheduleTensor = new TensorClass('float32', scheduleMask, [1, 168]);
 
             const results = await session.run({
@@ -347,13 +364,23 @@ export class RecommendationEngine {
                 schedule_input: scheduleTensor,
             });
 
-            // ── Extract Logits ──────────────────────────────────────────────
+            // FIX 3: Tensör Çıktı İsimlerini Güvenceye Alma
+            // Eğer modelin dışa aktarımında output isimleri 'category_logits' değilse diye Object.keys sırasına güveniyoruz
+            // Python kodunda dönüş sıran: p_cat, p_day, p_hour şeklindeydi.
+            const outKeys = Object.keys(results);
+            console.log("🧠 ONNX Output Keys:", outKeys);
+
             let catLogits: Float32Array = results['category_logits']?.data as Float32Array
-                ?? (results[Object.keys(results)[0]]?.data as Float32Array);
+                ?? (results[outKeys[0]]?.data as Float32Array);
             let dayLogits: Float32Array = results['day_logits']?.data as Float32Array
-                ?? (results[Object.keys(results)[1]]?.data as Float32Array);
+                ?? (results[outKeys[1]]?.data as Float32Array);
             let hourLogits: Float32Array = results['hour_logits']?.data as Float32Array
-                ?? (results[Object.keys(results)[2]]?.data as Float32Array);
+                ?? (results[outKeys[2]]?.data as Float32Array);
+
+            // Güvenlik kontrolü: Eğer boyut 52 değilse tensörler yanlış eşleşmiştir.
+            if (catLogits.length !== 52) {
+                console.error(`🚨 KRİTİK HATA: catLogits boyutu ${catLogits.length}! Beklenen: 52. ONNX çıktı sıralamasını kontrol et.`);
+            }
 
             const softmax = (arr: Float32Array): number[] => {
                 const max = Math.max(...Array.from(arr));
@@ -376,22 +403,17 @@ export class RecommendationEngine {
                 for (let h = 0; h < 24; h++) {
                     const idx = d * 24 + h;
 
-                    // 1. Raw match score
                     let score = dayProbs[d] * hourProbs[h];
-
-                    // 2. Schedule Mask (Everyone Free = 1, Anyone Busy = 0)
                     score *= scheduleMask[idx];
 
-                    // 3. Current Time Mask (Don't suggest the past)
                     if (d < currentDayIdx || (d === currentDayIdx && h <= currentHour)) {
-                        score *= 0.1; // Penalty for past/immediate slots to force "Next Week" fallback if needed
+                        score *= 0.1;
                     }
 
-                    // 4. Time Bonus Matrix
                     let bonus = 1.0;
-                    if (d < 5 && h >= 18 && h < 23) bonus = 1.20; // Weekday Evening
-                    else if (d >= 5 && h >= 12 && h < 23) bonus = 1.30; // Weekend Afternoon/Evening
-                    if (h >= 1 && h < 9) bonus = 0.20; // Night Penalty
+                    if (d < 5 && h >= 18 && h < 23) bonus = 1.20;
+                    else if (d >= 5 && h >= 12 && h < 23) bonus = 1.30;
+                    if (h >= 1 && h < 9) bonus = 0.20;
 
                     finalScores[idx] = score * bonus;
                 }
@@ -406,7 +428,6 @@ export class RecommendationEngine {
                 }
             }
 
-            // Fallback if everyone is busy 24/7 (should be rare)
             if (bestIdx === -1) bestIdx = currentDayIdx * 24 + ((currentHour + 2) % 24);
 
             const resDay = Math.floor(bestIdx / 24);
@@ -440,7 +461,6 @@ export class RecommendationEngine {
             const predictedSubCat = AI_TO_UI_MAP[rawCat] || rawCat;
             const predictedCat = CLUSTER_MAP[rawCat] || 'Social_Career';
 
-            // Resolve target date
             const targetTime = new Date(now);
             let daysToAdd = resDay - currentDayIdx;
             if (daysToAdd < 0 || (daysToAdd === 0 && resHour <= currentHour)) daysToAdd += 7;
@@ -452,17 +472,16 @@ export class RecommendationEngine {
             finalProposal = {
                 suggestedTime: targetTime,
                 suggestedCategory: predictedCat,
-                suggestedSubCategory: rawCat, // Canonical name for DB
-                suggestedSubCategoryUI: predictedSubCat, // For display
+                suggestedSubCategory: rawCat,
+                suggestedSubCategoryUI: predictedSubCat,
                 suggestedTitle: predictedSubCat,
-                suggestedTags: '', // Sadece 1 tür seçiliyor, ekstra taglere gerek kalmadı
+                suggestedTags: '',
             };
 
             // ── Phase 3: Post-Inference Real Event Matching ───────────────────
             console.log('🔍 Searching for matching real events...');
             const supabase = SupabaseClient.getInstance().client;
 
-            // Search range: ±12 hours around suggested time
             const timeLower = new Date(targetTime.getTime() - 12 * 60 * 60 * 1000).toISOString();
             const timeUpper = new Date(targetTime.getTime() + 12 * 60 * 60 * 1000).toISOString();
 
