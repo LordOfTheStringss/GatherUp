@@ -8,11 +8,11 @@ Gather Up is an AI-powered, campus-exclusive social networking mobile applicatio
 
 ##  Key Features
 
-- 🔒 **Trusted Circle (Strict Identity):** Secure authentication restricted solely to verified university email domains (e.g., `.edu.tr`), ensuring a safe and closed campus network.
-- 📅 **Smart Availability (OCR Parsing):** Users can upload their course syllabuses. The system uses OCR to parse schedules, find common free blocks, and suggest optimal meeting times.
-- 🤖 **AI-Powered Recommendation Engine:** Utilizes Supabase `pgvector` to create embeddings of user interests and event descriptions, offering "One-Tap Suggestions" for highly relevant social gatherings.
-- 💬 **Real-Time Event Chat:** Instant, event-scoped messaging powered by Supabase WebSockets.
-- 📍 **Spatio-Temporal Heatmaps:** Analyzes campus activity trends to show users where the most popular public events are happening in real-time.
+-  **Trusted Circle (Strict Identity):** Secure authentication restricted solely to verified university email domains (e.g., `.edu.tr`), ensuring a safe and closed campus network.
+-  **Smart Availability (OCR Parsing):** Users can upload their course syllabuses. The system uses OCR to parse schedules, find common free blocks, and suggest optimal meeting times.
+-  **AI-Powered Recommendation Engine:** Utilizes Supabase `pgvector` to create embeddings of user interests and event descriptions, offering "One-Tap Suggestions" for highly relevant social gatherings.
+-  **Real-Time Event Chat:** Instant, event-scoped messaging powered by Supabase WebSockets.
+-  **Spatio-Temporal Heatmaps:** Analyzes campus activity trends to show users where the most popular public events are happening in real-time.
 
 ---
 
